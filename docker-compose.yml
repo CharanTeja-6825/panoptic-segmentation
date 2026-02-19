@@ -1,0 +1,38 @@
+services:
+  panoptic-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: panoptic-segmentation:latest
+    container_name: panoptic-app
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist uploads and processed outputs outside the container
+      - ./uploads:/app/uploads
+      - ./outputs:/app/outputs
+    environment:
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8000"
+      MODEL_SIZE: "${MODEL_SIZE:-medium}"
+      MODEL_DEVICE: "${MODEL_DEVICE:-auto}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      CONF_THRESHOLD: "${CONF_THRESHOLD:-0.35}"
+      IOU_THRESHOLD: "${IOU_THRESHOLD:-0.45}"
+      MASK_ALPHA: "${MASK_ALPHA:-0.45}"
+      MAX_UPLOAD_SIZE_MB: "${MAX_UPLOAD_SIZE_MB:-500}"
+    restart: unless-stopped
+    # GPU support – remove if no GPU is available
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
