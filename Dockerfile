@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/      app/
 COPY frontend/ frontend/
 COPY run.sh    run.sh
+COPY tests/    tests/
 
 RUN chmod +x run.sh
 
