@@ -1,13 +1,21 @@
-# 🔬 Panoptic Segmentation Web Application
+# 🔬 Real-Time Intelligent Scene Understanding & Analytics Platform
 
-A **production-ready** real-time panoptic segmentation system built with:
+A **production-ready** real-time panoptic segmentation system with **object tracking**, **analytics**, **depth estimation**, and **multi-camera support**, built with:
 
 - **YOLOv8-seg** (Ultralytics) – instance + semantic fusion
 - **FastAPI** – async REST API backend
 - **OpenCV** – video I/O and MJPEG streaming
 - **PyTorch** – CUDA-accelerated inference
+- **MiDaS** – monocular depth estimation
+- **SciPy** – Hungarian algorithm for object tracking
 
-The application accepts uploaded video files **and** streams a live camera feed through a modern web UI, overlaying colour-coded masks, bounding boxes, and class labels in real time.
+The platform goes beyond basic segmentation through five integrated stages:
+
+1. **Object Tracking** – persistent IDs across frames via IoU-based Hungarian matching
+2. **Analytics Engine** – live object counting, spatial heatmaps, and event logging
+3. **Depth Estimation** – optional MiDaS-powered monocular depth overlays
+4. **Performance Optimization** – FP16 inference, model warm-up, and built-in benchmarking
+5. **Multi-Camera Support** – manage and stream from multiple camera sources simultaneously
 
 ---
 
@@ -20,10 +28,16 @@ The application accepts uploaded video files **and** streams a live camera feed 
 | GPU / CUDA support | Auto-detects and uses CUDA when available |
 | Instance segmentation | Per-object masks and bounding boxes |
 | Semantic segmentation | Per-pixel class labels (via instance-to-class mapping) |
+| Object tracking | Persistent track IDs across frames (IoU + Hungarian algorithm) |
+| Analytics dashboard | Live object counts, class breakdowns, and event logs |
+| Spatial heatmaps | Accumulative motion / presence heatmap overlay |
+| Depth estimation | Optional MiDaS monocular depth map overlay |
+| Multi-camera management | Start, stop, and list multiple camera streams |
 | Progress tracking | Real-time frame progress + FPS during video processing |
 | Model size selector | small / medium / large (via `MODEL_SIZE` env var) |
+| FP16 inference | Half-precision mode for faster GPU throughput |
 | Async processing | Background task queue; non-blocking API responses |
-| FPS benchmarking | Built-in benchmark script |
+| FPS benchmarking | Built-in benchmark script + `/api/benchmark` endpoint |
 | Docker support | Dockerfile + docker-compose.yml |
 
 ---
@@ -39,13 +53,24 @@ panoptic-segmentation-app/
 │   ├── inference/
 │   │   ├── model_loader.py      # YOLOv8-seg model loading + CUDA
 │   │   ├── panoptic_predictor.py# Per-frame segmentation logic
-│   │   └── video_processor.py   # Frame-by-frame video pipeline
+│   │   ├── video_processor.py   # Frame-by-frame video pipeline
+│   │   ├── tracker.py           # IoU-based multi-object tracker
+│   │   └── depth_estimator.py   # MiDaS monocular depth estimation
+│   ├── analytics/
+│   │   ├── object_counter.py    # Per-class rolling object counter
+│   │   ├── heatmap_generator.py # Spatial presence heatmap
+│   │   └── event_logger.py      # Timestamped analytics event log
 │   ├── routes/
 │   │   ├── video_routes.py      # /upload-video, /process-video, etc.
-│   │   └── camera_routes.py     # /camera-stream (MJPEG)
+│   │   ├── camera_routes.py     # /camera-stream (MJPEG)
+│   │   ├── analytics_routes.py  # /api/analytics/* endpoints
+│   │   └── multicam_routes.py   # /api/camera/* multi-cam endpoints
+│   ├── streams/
+│   │   └── camera_manager.py    # Multi-camera lifecycle manager
 │   └── utils/
 │       ├── visualization.py     # JPEG encode, FPS overlay, legend
-│       └── fps_counter.py       # Rolling-window FPS counter
+│       ├── fps_counter.py       # Rolling-window FPS counter
+│       └── benchmark.py         # Inference performance benchmarking
 │
 ├── frontend/
 │   ├── index.html               # Web UI
@@ -55,11 +80,60 @@ panoptic-segmentation-app/
 ├── benchmarks/
 │   └── fps_benchmark.py         # Inference FPS benchmark
 │
+├── tests/
+│   ├── test_tracker.py          # Object tracker unit tests
+│   └── test_analytics.py        # Analytics engine unit tests
+│
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
 ├── run.sh
 └── README.md
+```
+
+---
+
+## 🏗 Architecture
+
+### Pipeline Flows
+
+**Video upload flow**
+
+```
+Upload → Frame Extraction → Segmentation → Tracking → Depth (optional) → Analytics → Overlay → Output Video
+```
+
+**Live camera flow**
+
+```
+Camera Frame → Segmentation → Tracking → Depth → Analytics Update → Overlay → Stream Back
+```
+
+### Component Diagram
+
+```
+┌─────────────┐     ┌──────────────────┐     ┌────────────┐
+│  Video File  │────▶│  Frame Extractor  │────▶│            │
+└─────────────┘     └──────────────────┘     │            │
+                                              │  YOLOv8    │     ┌───────────┐     ┌────────────┐
+┌─────────────┐                               │  Panoptic  │────▶│  Tracker   │────▶│  Analytics  │
+│  Camera(s)  │────▶─────────────────────────▶│  Predictor │     │ (Hungarian)│     │  Engine     │
+└─────────────┘                               │            │     └─────┬─────┘     └─────┬──────┘
+                                              └─────┬──────┘           │                 │
+                                                    │            ┌─────▼─────┐     ┌─────▼──────┐
+                                                    │            │   Depth    │     │  Heatmap / │
+                                                    │            │ Estimator  │     │  Counter / │
+                                                    │            │  (MiDaS)   │     │   Logger   │
+                                                    │            └─────┬─────┘     └─────┬──────┘
+                                                    │                  │                 │
+                                                    ▼                  ▼                 ▼
+                                              ┌──────────────────────────────────────────┐
+                                              │          Visualization & Overlay          │
+                                              └──────────────────────────────────────────┘
+                                                                   │
+                                              ┌────────────────────┴────────────────────┐
+                                              ▼                                         ▼
+                                        Output Video                              MJPEG Stream
 ```
 
 ---
@@ -106,7 +180,8 @@ pip install -r requirements.txt
 ```
 
 > **Note:** YOLOv8-seg weights (`yolov8m-seg.pt` etc.) are downloaded automatically
-> from Ultralytics on first run.
+> from Ultralytics on first run. MiDaS weights are downloaded on first use of
+> depth estimation.
 
 ---
 
@@ -169,6 +244,14 @@ The `docker-compose.yml` already contains the GPU reservation block.
 | `POST` | `/api/camera-stream/stop` | Release the camera |
 | `GET`  | `/api/camera-stream/status` | Camera FPS and running state |
 | `GET`  | `/api/camera-stream` | MJPEG live segmentation stream |
+| `POST` | `/api/camera-stream/toggle-heatmap` | Toggle heatmap overlay on stream |
+| `GET`  | `/api/analytics/live` | Live analytics snapshot (counts, events) |
+| `GET`  | `/api/analytics/export` | Export analytics data as JSON |
+| `POST` | `/api/toggle-depth` | Enable / disable depth estimation |
+| `GET`  | `/api/benchmark` | Run and return inference benchmark results |
+| `POST` | `/api/camera/start` | Start a new camera stream (multi-cam) |
+| `POST` | `/api/camera/stop` | Stop a camera stream (multi-cam) |
+| `GET`  | `/api/camera/list` | List all active camera streams |
 
 Interactive API docs are available at **http://localhost:8000/docs**.
 
@@ -194,11 +277,22 @@ All settings can be overridden via environment variables:
 | `STREAM_FPS_TARGET` | `25` | Target camera stream FPS |
 | `JPEG_QUALITY` | `85` | MJPEG stream JPEG quality |
 | `LOG_LEVEL` | `INFO` | Python logging level |
+| `TRACKER_MAX_AGE` | `30` | Frames before a lost track is removed |
+| `TRACKER_MIN_HITS` | `3` | Minimum detections before track is confirmed |
+| `TRACKER_IOU_THRESHOLD` | `0.3` | IoU threshold for track association |
+| `DEPTH_ENABLED` | `false` | Enable MiDaS depth estimation |
+| `DEPTH_MODEL` | `MiDaS_small` | MiDaS model variant |
+| `USE_FP16` | `false` | Enable FP16 half-precision inference |
+| `MODEL_WARMUP_FRAMES` | `3` | Warm-up frames at startup |
+| `ANALYTICS_ROLLING_WINDOW` | `100` | Rolling window size for analytics |
+| `HEATMAP_WIDTH` | `640` | Heatmap grid width |
+| `HEATMAP_HEIGHT` | `480` | Heatmap grid height |
+| `HEATMAP_DECAY` | `0.98` | Heatmap exponential decay factor |
 
 Example:
 
 ```bash
-MODEL_SIZE=small MODEL_DEVICE=cuda ./run.sh
+MODEL_SIZE=small MODEL_DEVICE=cuda DEPTH_ENABLED=true USE_FP16=true ./run.sh
 ```
 
 ---
@@ -221,6 +315,9 @@ Expected throughput (approximate):
 | medium | ~55 FPS | ~7 FPS  |
 | large  | ~25 FPS | ~3 FPS  |
 
+> **Tip:** Enable `USE_FP16=true` on supported GPUs for up to ~30 % faster inference.
+> Use the `/api/benchmark` endpoint to measure throughput on your hardware.
+
 ---
 
 ## 🔧 Troubleshooting
@@ -240,10 +337,16 @@ Expected throughput (approximate):
 pip install ultralytics
 ```
 
+### `No module named 'scipy'`
+```bash
+pip install scipy
+```
+
 ### Slow inference
 - Use `MODEL_SIZE=small` for faster (but less accurate) predictions.
 - Reduce `INFERENCE_INPUT_SIZE` (e.g. `480`).
 - Enable GPU if available.
+- Set `USE_FP16=true` for half-precision on CUDA devices.
 
 ### Upload fails with 413
 - Increase `MAX_UPLOAD_SIZE_MB` environment variable.

@@ -61,6 +61,25 @@ class AppConfig:
     # Thread pool for CPU-bound inference
     inference_workers: int = int(os.environ.get("INFERENCE_WORKERS", "2"))
 
+    # Tracking settings
+    tracker_max_age: int = int(os.environ.get("TRACKER_MAX_AGE", "30"))
+    tracker_min_hits: int = int(os.environ.get("TRACKER_MIN_HITS", "3"))
+    tracker_iou_threshold: float = float(os.environ.get("TRACKER_IOU_THRESHOLD", "0.3"))
+
+    # Depth estimation (off by default)
+    depth_enabled: bool = os.environ.get("DEPTH_ENABLED", "false").lower() == "true"
+    depth_model: str = os.environ.get("DEPTH_MODEL", "MiDaS_small")
+
+    # Performance
+    use_fp16: bool = os.environ.get("USE_FP16", "false").lower() == "true"
+    model_warmup_frames: int = int(os.environ.get("MODEL_WARMUP_FRAMES", "3"))
+
+    # Analytics
+    analytics_rolling_window: int = int(os.environ.get("ANALYTICS_ROLLING_WINDOW", "100"))
+    heatmap_width: int = int(os.environ.get("HEATMAP_WIDTH", "640"))
+    heatmap_height: int = int(os.environ.get("HEATMAP_HEIGHT", "480"))
+    heatmap_decay: float = float(os.environ.get("HEATMAP_DECAY", "0.98"))
+
 
 # Singleton config instance used throughout the application
 config = AppConfig()

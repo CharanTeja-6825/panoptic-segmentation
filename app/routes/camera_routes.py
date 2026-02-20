@@ -21,6 +21,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.config import config
 from app.inference.panoptic_predictor import PanopticPredictor
+from app.inference.tracker import ObjectTracker
+from app.analytics.heatmap_generator import HeatmapGenerator
+from app.routes.analytics_routes import get_event_logger, get_object_counter
 from app.utils.fps_counter import FPSCounter
 from app.utils.visualization import build_mjpeg_frame, draw_fps, encode_jpeg
 
@@ -44,17 +47,30 @@ class CameraState:
         self._fps_counter = FPSCounter(window=30)
         self._thread: Optional[threading.Thread] = None
         self._predictor: Optional[PanopticPredictor] = None
+        self._tracker: ObjectTracker = ObjectTracker(
+            max_age=config.tracker_max_age,
+            min_hits=config.tracker_min_hits,
+            iou_threshold=config.tracker_iou_threshold,
+        )
+        self._heatmap: HeatmapGenerator = HeatmapGenerator(
+            width=config.heatmap_width,
+            height=config.heatmap_height,
+            decay=config.heatmap_decay,
+        )
+        self._show_heatmap: bool = False
+        self._depth_estimator = None
 
     # ------------------------------------------------------------------
     # Control
     # ------------------------------------------------------------------
 
-    def start(self, predictor: PanopticPredictor) -> None:
+    def start(self, predictor: PanopticPredictor, depth_estimator=None) -> None:
         """Start the background capture + inference loop."""
         with self._lock:
             if self._running:
                 return
             self._predictor = predictor
+            self._depth_estimator = depth_estimator
             self._cap = cv2.VideoCapture(config.camera_index)
             if not self._cap.isOpened():
                 self._cap = None
@@ -82,6 +98,8 @@ class CameraState:
             if self._cap is not None:
                 self._cap.release()
                 self._cap = None
+        self._tracker.reset()
+        self._heatmap.reset()
         logger.info("Camera capture stopped.")
 
     # ------------------------------------------------------------------
@@ -97,6 +115,14 @@ class CameraState:
     def fps(self) -> float:
         return self._fps_counter.fps
 
+    @property
+    def show_heatmap(self) -> bool:
+        return self._show_heatmap
+
+    @show_heatmap.setter
+    def show_heatmap(self, value: bool) -> None:
+        self._show_heatmap = value
+
     def get_annotated_frame(self) -> Optional[np.ndarray]:
         """Return a copy of the latest annotated frame (thread-safe)."""
         with self._lock:
@@ -111,6 +137,8 @@ class CameraState:
     def _capture_loop(self) -> None:
         """Continuously grab frames, run inference, update shared state."""
         delay = 1.0 / config.stream_fps_target
+        counter = get_object_counter()
+        event_logger = get_event_logger()
 
         while True:
             with self._lock:
@@ -131,6 +159,56 @@ class CameraState:
                     if result.annotated_frame is not None
                     else frame
                 )
+
+                # Tracking
+                tracking_result = self._tracker.update(result.detections)
+                tracked = tracking_result.tracked_objects
+
+                # Analytics
+                counter.update(tracked, self._fps_counter.fps)
+                event_logger.update(tracked)
+                self._heatmap.update(tracked)
+
+                # Depth estimation (optional)
+                depth_estimator = self._depth_estimator
+                if depth_estimator is not None and depth_estimator.enabled:
+                    depth_map = depth_estimator.estimate(frame)
+                    if depth_map is not None:
+                        for obj in tracked:
+                            dist = depth_estimator.estimate_object_distance(
+                                depth_map, obj.bbox
+                            )
+                            label = f"{obj.class_name} - {dist}m"
+                            x1, y1, x2, y2 = obj.bbox
+                            cv2.putText(
+                                annotated,
+                                label,
+                                (x1, max(y1 - 10, 15)),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5,
+                                (0, 255, 255),
+                                1,
+                                cv2.LINE_AA,
+                            )
+
+                # Draw tracking IDs on annotated frame
+                for obj in tracked:
+                    x1, y1, x2, y2 = obj.bbox
+                    cv2.putText(
+                        annotated,
+                        f"ID:{obj.track_id}",
+                        (x1, y2 + 15),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.45,
+                        obj.color,
+                        1,
+                        cv2.LINE_AA,
+                    )
+
+                # Heatmap overlay
+                if self._show_heatmap:
+                    annotated = self._heatmap.overlay_on_frame(annotated, alpha=0.3)
+
             except Exception as exc:
                 logger.error("Inference error: %s", exc)
                 annotated = frame
@@ -166,9 +244,12 @@ async def start_camera(request: Request) -> JSONResponse:
         return JSONResponse({"status": "already_running"})
 
     predictor = _get_predictor(request)
+    depth_estimator = getattr(request.app.state, "depth_estimator", None)
     try:
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _camera_state.start, predictor)
+        await loop.run_in_executor(
+            None, _camera_state.start, predictor, depth_estimator
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -191,8 +272,16 @@ async def camera_status() -> JSONResponse:
             "running": _camera_state.is_running,
             "fps": round(_camera_state.fps, 1),
             "camera_index": config.camera_index,
+            "heatmap": _camera_state.show_heatmap,
         }
     )
+
+
+@router.post("/camera-stream/toggle-heatmap", summary="Toggle heatmap overlay")
+async def toggle_heatmap() -> JSONResponse:
+    """Toggle the heatmap overlay on the camera stream."""
+    _camera_state.show_heatmap = not _camera_state.show_heatmap
+    return JSONResponse({"heatmap": _camera_state.show_heatmap})
 
 
 @router.get("/camera-stream", summary="MJPEG live segmentation stream")
@@ -205,9 +294,12 @@ async def camera_stream(request: Request) -> StreamingResponse:
     # Auto-start the camera if it is not already running
     if not _camera_state.is_running:
         predictor = _get_predictor(request)
+        depth_estimator = getattr(request.app.state, "depth_estimator", None)
         try:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _camera_state.start, predictor)
+            await loop.run_in_executor(
+                None, _camera_state.start, predictor, depth_estimator
+            )
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 

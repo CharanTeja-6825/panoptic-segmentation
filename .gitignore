@@ -34,5 +34,8 @@ Thumbs.db
 # Logs
 *.log
 
+# Pytest
+.pytest_cache/
+
 # Docker
 .dockerignore

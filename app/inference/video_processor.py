@@ -17,6 +17,7 @@ import numpy as np
 
 from app.config import config
 from app.inference.panoptic_predictor import PanopticPredictor
+from app.inference.tracker import ObjectTracker
 from app.utils.fps_counter import FPSCounter
 
 logger = logging.getLogger(__name__)
@@ -31,10 +32,28 @@ class VideoProcessor:
     Args:
         predictor: A :class:`~app.inference.panoptic_predictor.PanopticPredictor`
             instance.
+        enable_tracking: Whether to run object tracking on detections.
+        depth_estimator: Optional depth estimator for distance labelling.
     """
 
-    def __init__(self, predictor: PanopticPredictor) -> None:
+    def __init__(
+        self,
+        predictor: PanopticPredictor,
+        enable_tracking: bool = True,
+        depth_estimator=None,
+    ) -> None:
         self._predictor = predictor
+        self._enable_tracking = enable_tracking
+        self._depth_estimator = depth_estimator
+        self._tracker: Optional[ObjectTracker] = (
+            ObjectTracker(
+                max_age=config.tracker_max_age,
+                min_hits=config.tracker_min_hits,
+                iou_threshold=config.tracker_iou_threshold,
+            )
+            if enable_tracking
+            else None
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -104,6 +123,45 @@ class VideoProcessor:
                 fps_counter.tick()
                 result = self._predictor.predict(frame)
                 annotated = result.annotated_frame if result.annotated_frame is not None else frame
+
+                # Tracking overlay
+                if self._tracker is not None:
+                    tracking_result = self._tracker.update(result.detections)
+                    for obj in tracking_result.tracked_objects:
+                        x1, y1, x2, y2 = obj.bbox
+                        cv2.putText(
+                            annotated,
+                            f"ID:{obj.track_id}",
+                            (x1, y2 + 15),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.45,
+                            obj.color,
+                            1,
+                            cv2.LINE_AA,
+                        )
+
+                    # Depth estimation overlay
+                    depth_est = self._depth_estimator
+                    if depth_est is not None and depth_est.enabled:
+                        depth_map = depth_est.estimate(frame)
+                        if depth_map is not None:
+                            for obj in tracking_result.tracked_objects:
+                                dist = depth_est.estimate_object_distance(
+                                    depth_map, obj.bbox
+                                )
+                                label = f"{obj.class_name} - {dist}m"
+                                bx1, by1, _, _ = obj.bbox
+                                cv2.putText(
+                                    annotated,
+                                    label,
+                                    (bx1, max(by1 - 10, 15)),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (0, 255, 255),
+                                    1,
+                                    cv2.LINE_AA,
+                                )
+
                 writer.write(annotated)
                 frame_idx += 1
 

@@ -125,7 +125,12 @@ async def process_video(
         )
 
     predictor = _get_predictor(request)
-    processor = VideoProcessor(predictor)
+    depth_estimator = getattr(request.app.state, "depth_estimator", None)
+    processor = VideoProcessor(
+        predictor,
+        enable_tracking=True,
+        depth_estimator=depth_estimator,
+    )
 
     input_path = job["input_path"]
     output_filename = f"{job_id}_output.mp4"
