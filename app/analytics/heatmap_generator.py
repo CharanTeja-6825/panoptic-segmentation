@@ -32,10 +32,12 @@ class HeatmapGenerator:
         width: int = 640,
         height: int = 480,
         decay: float = 0.98,
+        stamp_radius: int = 8,
     ) -> None:
         self._width = width
         self._height = height
         self._decay = decay
+        self._stamp_radius = stamp_radius
         self._lock = threading.Lock()
         self._accumulator = np.zeros((height, width), dtype=np.float64)
 
@@ -54,7 +56,7 @@ class HeatmapGenerator:
                 ix = int(min(max(cx, 0), self._width - 1))
                 iy = int(min(max(cy, 0), self._height - 1))
                 # Gaussian-like stamp (small kernel)
-                radius = 8
+                radius = self._stamp_radius
                 for dy in range(-radius, radius + 1):
                     for dx in range(-radius, radius + 1):
                         px = ix + dx
