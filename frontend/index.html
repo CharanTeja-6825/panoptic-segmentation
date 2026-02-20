@@ -3,17 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Panoptic Segmentation</title>
+  <title>Scene Understanding Platform</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
   <!-- ===== Header ===== -->
   <header class="header">
     <div class="header-inner">
-      <h1 class="logo">🔬 Panoptic Segmentation</h1>
+      <h1 class="logo">🧠 Scene Understanding Platform</h1>
       <div class="header-status">
         <span id="device-badge" class="badge badge-neutral">Device: …</span>
         <span id="model-badge" class="badge badge-neutral">Model: …</span>
+        <span id="depth-badge" class="badge badge-neutral">Depth: off</span>
+        <span id="tracking-badge" class="badge badge-gpu">Tracking: on</span>
       </div>
     </div>
   </header>
@@ -25,6 +27,8 @@
     <nav class="tabs" role="tablist">
       <button class="tab-btn active" data-tab="video" role="tab">📁 Video Upload</button>
       <button class="tab-btn"        data-tab="camera" role="tab">📷 Live Camera</button>
+      <button class="tab-btn"        data-tab="analytics" role="tab">📊 Analytics</button>
+      <button class="tab-btn"        data-tab="multicam" role="tab">🎥 Multi-Camera</button>
     </nav>
 
     <!-- ========================================================== -->
@@ -99,6 +103,8 @@
         <div class="camera-controls">
           <button id="start-cam-btn" class="btn btn-primary">▶ Start Camera</button>
           <button id="stop-cam-btn"  class="btn btn-danger"  disabled>■ Stop Camera</button>
+          <button id="heatmap-btn"   class="btn btn-secondary">🔥 Heatmap</button>
+          <button id="depth-btn"     class="btn btn-secondary">🔭 Depth</button>
           <div class="fps-display">
             <span class="fps-label">FPS</span>
             <span id="cam-fps" class="fps-value">—</span>
@@ -110,6 +116,13 @@
           <label for="alpha-slider">Mask opacity</label>
           <input type="range" id="alpha-slider" min="0" max="100" value="45" />
           <span id="alpha-value">45%</span>
+        </div>
+
+        <!-- Live stats panel -->
+        <div id="cam-stats" class="stats-panel hidden">
+          <div class="stat-item"><span class="stat-label">Objects</span><span id="cam-obj-count" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">Persons</span><span id="cam-person-count" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">Vehicles</span><span id="cam-vehicle-count" class="stat-value">0</span></div>
         </div>
 
         <!-- MJPEG stream image -->
@@ -128,11 +141,90 @@
 
     </section>
 
+    <!-- ========================================================== -->
+    <!--  ANALYTICS TAB                                              -->
+    <!-- ========================================================== -->
+    <section id="tab-analytics" class="tab-panel" role="tabpanel">
+
+      <div class="card">
+        <h2>📊 Live Analytics</h2>
+        <div class="analytics-grid">
+          <div class="stat-card">
+            <div class="stat-card-label">Total Objects</div>
+            <div id="analytics-total" class="stat-card-value">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Current FPS</div>
+            <div id="analytics-fps" class="stat-card-value">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">Frames Processed</div>
+            <div id="analytics-frames" class="stat-card-value">0</div>
+          </div>
+        </div>
+
+        <h3 style="margin-top:1.5rem;">Object Counts by Class</h3>
+        <div id="analytics-counts" class="counts-list">
+          <p class="hint">Start a camera feed to see live counts</p>
+        </div>
+
+        <h3 style="margin-top:1.5rem;">Recent Events</h3>
+        <div id="analytics-events" class="events-list">
+          <p class="hint">No events yet</p>
+        </div>
+
+        <div style="margin-top:1.5rem;">
+          <a href="/api/analytics/export" class="btn btn-secondary" download="events.csv">📥 Export CSV</a>
+        </div>
+      </div>
+
+      <!-- Benchmark -->
+      <div class="card">
+        <h2>⚡ Performance Benchmark</h2>
+        <div class="analytics-grid">
+          <div class="stat-card">
+            <div class="stat-card-label">Avg FPS</div>
+            <div id="bench-fps" class="stat-card-value">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">GPU Memory</div>
+            <div id="bench-gpu-mem" class="stat-card-value">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-label">CPU Load</div>
+            <div id="bench-cpu" class="stat-card-value">—</div>
+          </div>
+        </div>
+        <button id="refresh-bench-btn" class="btn btn-secondary" style="margin-top:1rem;">🔄 Refresh</button>
+      </div>
+
+    </section>
+
+    <!-- ========================================================== -->
+    <!--  MULTI-CAMERA TAB                                           -->
+    <!-- ========================================================== -->
+    <section id="tab-multicam" class="tab-panel" role="tabpanel">
+
+      <div class="card">
+        <h2>🎥 Multi-Camera Manager</h2>
+        <div class="multicam-controls">
+          <input type="number" id="mc-cam-index" class="input-field" value="0" min="0" placeholder="Camera index" />
+          <input type="text" id="mc-cam-label" class="input-field" placeholder="Label (optional)" />
+          <button id="mc-start-btn" class="btn btn-primary">+ Add Camera</button>
+        </div>
+
+        <div id="mc-streams-list" class="streams-list">
+          <p class="hint">No active camera streams</p>
+        </div>
+      </div>
+
+    </section>
+
   </main>
 
   <!-- ===== Footer ===== -->
   <footer class="footer">
-    <p>Panoptic Segmentation App &nbsp;·&nbsp; Powered by YOLOv8-seg &amp; FastAPI</p>
+    <p>Real-Time Intelligent Scene Understanding Platform &nbsp;·&nbsp; Powered by YOLOv8-seg &amp; FastAPI</p>
   </footer>
 
   <script src="/static/script.js"></script>
