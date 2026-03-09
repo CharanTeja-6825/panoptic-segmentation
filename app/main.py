@@ -19,10 +19,15 @@ from app.config import config
 from app.inference.model_loader import ModelLoader
 from app.inference.depth_estimator import DepthEstimator
 from app.inference.panoptic_predictor import PanopticPredictor
+from app.llm.ollama_client import OllamaClient
+from app.memory.scene_memory import SceneMemory
 from app.routes.camera_routes import router as camera_router
 from app.routes.video_routes import router as video_router
 from app.routes.analytics_routes import router as analytics_router
 from app.routes.multicam_routes import router as multicam_router
+from app.routes.chat_routes import router as chat_router, init_chat_routes
+from app.routes.scene_routes import router as scene_router, init_scene_routes
+from app.services.commentary_engine import CommentaryEngine
 from app.utils.benchmark import BenchmarkUtil, warmup_model
 
 # ---------------------------------------------------------------------------
@@ -43,12 +48,16 @@ logger = logging.getLogger(__name__)
 _model_loader: ModelLoader | None = None
 _depth_estimator: DepthEstimator | None = None
 _benchmark: BenchmarkUtil | None = None
+_scene_memory: SceneMemory | None = None
+_ollama_client: OllamaClient | None = None
+_commentary_engine: CommentaryEngine | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage startup and shutdown events."""
     global _model_loader, _depth_estimator, _benchmark
+    global _scene_memory, _ollama_client, _commentary_engine
 
     # ---- startup ----
     logger.info("Starting Real-Time Intelligent Scene Understanding Platform…")
@@ -75,6 +84,44 @@ async def lifespan(app: FastAPI):
     # Benchmark utility
     _benchmark = BenchmarkUtil()
     app.state.benchmark = _benchmark
+
+    # Scene memory
+    _scene_memory = SceneMemory(
+        short_term_capacity=config.scene_memory_capacity,
+        snapshot_interval=config.scene_snapshot_interval,
+    )
+    app.state.scene_memory = _scene_memory
+
+    # Ollama LLM client
+    _ollama_client = OllamaClient(
+        base_url=config.ollama_base_url,
+        model=config.ollama_model,
+        timeout=config.ollama_timeout,
+    )
+    app.state.ollama_client = _ollama_client
+
+    # Check Ollama health (non-blocking, log result)
+    ollama_ok = await _ollama_client.check_health()
+    if ollama_ok:
+        logger.info("Ollama LLM connected at %s", config.ollama_base_url)
+    else:
+        logger.warning(
+            "Ollama LLM not available at %s – chat features will be limited",
+            config.ollama_base_url,
+        )
+
+    # Commentary engine
+    _commentary_engine = CommentaryEngine(
+        ollama_client=_ollama_client,
+        scene_memory=_scene_memory,
+        commentary_interval=config.commentary_interval,
+    )
+    _commentary_engine.enabled = config.commentary_enabled
+    app.state.commentary_engine = _commentary_engine
+
+    # Initialise route modules
+    init_chat_routes(_ollama_client, _scene_memory)
+    init_scene_routes(_scene_memory, _commentary_engine)
 
     # Model warmup
     if config.model_warmup_frames > 0:
@@ -126,6 +173,8 @@ def create_app() -> FastAPI:
     app.include_router(camera_router, prefix="/api", tags=["camera"])
     app.include_router(analytics_router, prefix="/api", tags=["analytics"])
     app.include_router(multicam_router, prefix="/api", tags=["multi-camera"])
+    app.include_router(chat_router, prefix="/api", tags=["chat"])
+    app.include_router(scene_router, prefix="/api", tags=["scene"])
 
     # Serve frontend static files
     frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -157,6 +206,15 @@ def create_app() -> FastAPI:
         depth_status = "disabled"
         if hasattr(app.state, "depth_estimator") and app.state.depth_estimator is not None:
             depth_status = "enabled" if app.state.depth_estimator.enabled else "disabled"
+
+        ollama_status = "unavailable"
+        if hasattr(app.state, "ollama_client") and app.state.ollama_client is not None:
+            ollama_status = "connected" if app.state.ollama_client.is_available else "disconnected"
+
+        commentary_status = "disabled"
+        if hasattr(app.state, "commentary_engine") and app.state.commentary_engine is not None:
+            commentary_status = "enabled" if app.state.commentary_engine.enabled else "disabled"
+
         return {
             "status": "ok",
             "device": device,
@@ -164,6 +222,10 @@ def create_app() -> FastAPI:
             "model_size": config.model_size,
             "depth_estimation": depth_status,
             "tracking": True,
+            "ollama": ollama_status,
+            "ollama_model": config.ollama_model,
+            "commentary": commentary_status,
+            "scene_memory": hasattr(app.state, "scene_memory"),
         }
 
     @app.post("/api/toggle-depth", tags=["depth"])
