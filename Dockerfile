@@ -1,13 +1,22 @@
 # syntax=docker/dockerfile:1
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
+COPY frontend/ ./
+RUN npm run build
+
+# ---- Backend image ----
 FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
 
 LABEL maintainer="Panoptic Segmentation App"
-LABEL description="Real-time panoptic segmentation with YOLOv8-seg and FastAPI"
+LABEL description="Real-time panoptic segmentation with YOLOv8-seg, Ollama LLM, and FastAPI"
 
 # Prevent interactive prompts during package install
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies for OpenCV
+# Install system dependencies for OpenCV and curl (healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libsm6 \
@@ -15,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libgl1 \
     ffmpeg \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -24,10 +34,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY app/      app/
-COPY frontend/ frontend/
-COPY run.sh    run.sh
-COPY tests/    tests/
+COPY app/              app/
+COPY frontend-legacy/  frontend-legacy/
+COPY run.sh            run.sh
+COPY tests/            tests/
+
+# Copy built frontend from builder stage
+COPY --from=frontend-builder /frontend/dist frontend/dist/
 
 RUN chmod +x run.sh
 

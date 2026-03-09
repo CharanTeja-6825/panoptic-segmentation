@@ -177,14 +177,27 @@ def create_app() -> FastAPI:
     app.include_router(scene_router, prefix="/api", tags=["scene"])
 
     # Serve frontend static files
-    frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
-    if os.path.isdir(frontend_dir):
-        app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
+    frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+    frontend_legacy = os.path.join(os.path.dirname(__file__), "..", "frontend-legacy")
+
+    # Prefer built React app, fall back to legacy frontend
+    if os.path.isdir(frontend_dist):
+        assets_dir = os.path.join(frontend_dist, "assets")
+        if os.path.isdir(assets_dir):
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
         @app.get("/", include_in_schema=False)
         async def serve_index():
-            """Serve the main web UI."""
-            return FileResponse(os.path.join(frontend_dir, "index.html"))
+            """Serve the React app."""
+            return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+    elif os.path.isdir(frontend_legacy):
+        app.mount("/static", StaticFiles(directory=frontend_legacy), name="static")
+
+        @app.get("/", include_in_schema=False)
+        async def serve_index():
+            """Serve the legacy web UI."""
+            return FileResponse(os.path.join(frontend_legacy, "index.html"))
 
     # Serve processed output videos
     if os.path.isdir(config.output_dir):
