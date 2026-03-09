@@ -80,6 +80,19 @@ class AppConfig:
     heatmap_height: int = int(os.environ.get("HEATMAP_HEIGHT", "480"))
     heatmap_decay: float = float(os.environ.get("HEATMAP_DECAY", "0.98"))
 
+    # Ollama LLM settings
+    ollama_base_url: str = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+    ollama_model: str = os.environ.get("OLLAMA_MODEL", "llama3.2")
+    ollama_timeout: float = float(os.environ.get("OLLAMA_TIMEOUT", "120"))
+
+    # Commentary engine
+    commentary_enabled: bool = os.environ.get("COMMENTARY_ENABLED", "true").lower() == "true"
+    commentary_interval: float = float(os.environ.get("COMMENTARY_INTERVAL", "30"))
+
+    # Scene memory
+    scene_memory_capacity: int = int(os.environ.get("SCENE_MEMORY_CAPACITY", "300"))
+    scene_snapshot_interval: float = float(os.environ.get("SCENE_SNAPSHOT_INTERVAL", "5"))
+
 
 # Singleton config instance used throughout the application
 config = AppConfig()
