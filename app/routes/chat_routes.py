@@ -9,6 +9,7 @@ Endpoints:
     GET  /llm/models    – List available Ollama models.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -29,6 +30,7 @@ router = APIRouter()
 _ollama_client: Optional[OllamaClient] = None
 _scene_memory: Optional[SceneMemory] = None
 _chat_history: List[Dict[str, str]] = []
+_chat_lock = asyncio.Lock()
 
 MAX_CHAT_HISTORY = 50
 
@@ -67,10 +69,14 @@ async def chat_message(req: ChatRequest) -> JSONResponse:
         )
 
     scene_summary = _scene_memory.get_scene_summary()
+
+    async with _chat_lock:
+        history_snapshot = list(_chat_history)
+
     messages = build_chat_messages(
         user_query=req.message,
         scene_summary=scene_summary,
-        chat_history=_chat_history,
+        chat_history=history_snapshot,
     )
 
     reply = await _ollama_client.chat(
@@ -80,10 +86,11 @@ async def chat_message(req: ChatRequest) -> JSONResponse:
     )
 
     # Store in history
-    _chat_history.append({"role": "user", "content": req.message})
-    _chat_history.append({"role": "assistant", "content": reply})
-    if len(_chat_history) > MAX_CHAT_HISTORY * 2:
-        del _chat_history[: len(_chat_history) - MAX_CHAT_HISTORY * 2]
+    async with _chat_lock:
+        _chat_history.append({"role": "user", "content": req.message})
+        _chat_history.append({"role": "assistant", "content": reply})
+        if len(_chat_history) > MAX_CHAT_HISTORY * 2:
+            del _chat_history[: len(_chat_history) - MAX_CHAT_HISTORY * 2]
 
     return JSONResponse({
         "reply": reply,
@@ -121,10 +128,14 @@ async def chat_stream_ws(websocket: WebSocket) -> None:
                 continue
 
             scene_summary = _scene_memory.get_scene_summary()
+
+            async with _chat_lock:
+                history_snapshot = list(_chat_history)
+
             messages = build_chat_messages(
                 user_query=message,
                 scene_summary=scene_summary,
-                chat_history=_chat_history,
+                chat_history=history_snapshot,
             )
 
             full_reply = []
@@ -140,10 +151,11 @@ async def chat_stream_ws(websocket: WebSocket) -> None:
 
             # Store in history
             reply_text = "".join(full_reply)
-            _chat_history.append({"role": "user", "content": message})
-            _chat_history.append({"role": "assistant", "content": reply_text})
-            if len(_chat_history) > MAX_CHAT_HISTORY * 2:
-                del _chat_history[: len(_chat_history) - MAX_CHAT_HISTORY * 2]
+            async with _chat_lock:
+                _chat_history.append({"role": "user", "content": message})
+                _chat_history.append({"role": "assistant", "content": reply_text})
+                if len(_chat_history) > MAX_CHAT_HISTORY * 2:
+                    del _chat_history[: len(_chat_history) - MAX_CHAT_HISTORY * 2]
 
     except WebSocketDisconnect:
         logger.debug("Chat WebSocket disconnected")

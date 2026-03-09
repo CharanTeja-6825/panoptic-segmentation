@@ -11,6 +11,7 @@ Endpoints:
     WS   /ws/events         – WebSocket for real-time event streaming.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -31,6 +32,7 @@ _commentary_engine: Optional[CommentaryEngine] = None
 
 # Active WebSocket connections for event broadcasting
 _event_subscribers: Set[WebSocket] = set()
+_subscribers_lock = asyncio.Lock()
 
 
 def init_scene_routes(
@@ -45,17 +47,21 @@ def init_scene_routes(
 
 async def broadcast_event(event: Dict[str, Any]) -> None:
     """Broadcast an event to all connected WebSocket subscribers."""
-    if not _event_subscribers:
+    async with _subscribers_lock:
+        subscribers = set(_event_subscribers)
+    if not subscribers:
         return
     message = json.dumps(event)
     disconnected: List[WebSocket] = []
-    for ws in _event_subscribers:
+    for ws in subscribers:
         try:
             await ws.send_text(message)
         except Exception:
             disconnected.append(ws)
-    for ws in disconnected:
-        _event_subscribers.discard(ws)
+    if disconnected:
+        async with _subscribers_lock:
+            for ws in disconnected:
+                _event_subscribers.discard(ws)
 
 
 @router.get("/scene/state", summary="Current scene state")
@@ -156,8 +162,10 @@ async def events_ws(websocket: WebSocket) -> None:
     Connected clients receive JSON events as they occur.
     """
     await websocket.accept()
-    _event_subscribers.add(websocket)
-    logger.debug("Event WebSocket connected (%d total)", len(_event_subscribers))
+    async with _subscribers_lock:
+        _event_subscribers.add(websocket)
+        count = len(_event_subscribers)
+    logger.debug("Event WebSocket connected (%d total)", count)
     try:
         while True:
             # Keep connection alive; client can send pings
@@ -165,8 +173,10 @@ async def events_ws(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        _event_subscribers.discard(websocket)
+        async with _subscribers_lock:
+            _event_subscribers.discard(websocket)
+            remaining = len(_event_subscribers)
         logger.debug(
             "Event WebSocket disconnected (%d remaining)",
-            len(_event_subscribers),
+            remaining,
         )

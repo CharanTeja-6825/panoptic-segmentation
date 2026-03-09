@@ -1,3 +1,5 @@
+const RECONNECT_BACKOFF_MULTIPLIER = 1.5;
+
 type MessageHandler = (data: unknown) => void;
 
 export class WebSocketManager {
@@ -57,7 +59,7 @@ export class WebSocketManager {
       this.reconnectTimer = null;
       this.connect();
       this.currentDelay = Math.min(
-        this.currentDelay * 1.5,
+        this.currentDelay * RECONNECT_BACKOFF_MULTIPLIER,
         this.maxReconnectDelay
       );
     }, this.currentDelay);
