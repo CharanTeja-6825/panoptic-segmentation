@@ -34,6 +34,7 @@ The platform integrates six major subsystems:
 | Object tracking | Persistent track IDs across frames (IoU + Hungarian algorithm) |
 | **Scene memory** | Short-term buffer + long-term event store with queryable state |
 | **AI chat interface** | Natural language queries with streaming LLM responses |
+| **Processed-video Q&A** | Ask questions grounded in full-video analysis and sampled keyframes |
 | **Live commentary** | Auto-generated scene descriptions and alerts |
 | Analytics dashboard | Live object counts, class breakdowns, and event logs |
 | Spatial heatmaps | Accumulative motion / presence heatmap overlay |
@@ -322,6 +323,8 @@ Remove the `deploy.resources.reservations` blocks from `docker-compose.yml` and 
 | `POST` | `/api/process-video/{job_id}` | Start background processing |
 | `GET`  | `/api/job-status/{job_id}` | Poll processing progress |
 | `GET`  | `/api/download/{job_id}` | Download the output video |
+| `GET`  | `/api/video-analysis/{job_id}` | Fetch structured analysis for a processed video |
+| `POST` | `/api/video-chat/{job_id}` | Ask questions about a processed video |
 
 ### Live Camera
 
@@ -387,6 +390,7 @@ All settings can be overridden via environment variables:
 | `MODEL_SIZE` | `medium` | `small` \| `medium` \| `large` |
 | `MODEL_DEVICE` | `auto` | `auto` \| `cpu` \| `cuda` |
 | `MAX_UPLOAD_SIZE_MB` | `500` | Max uploaded file size |
+| `VIDEO_KEYFRAME_INTERVAL_SECONDS` | `2.0` | Keyframe sampling interval for processed-video Q&A |
 | `INFERENCE_INPUT_SIZE` | `640` | Frame resize target for inference |
 | `CONF_THRESHOLD` | `0.35` | Detection confidence threshold |
 | `IOU_THRESHOLD` | `0.45` | NMS IoU threshold |

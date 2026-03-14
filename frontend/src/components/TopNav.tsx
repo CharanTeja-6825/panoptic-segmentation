@@ -1,4 +1,4 @@
-import { useStore } from "../store/useStore";
+import { PageKey, useStore } from "../store/useStore";
 import SystemStatus from "./SystemStatus";
 
 export default function TopNav() {
@@ -6,7 +6,14 @@ export default function TopNav() {
   const toggleDarkMode = useStore((s) => s.toggleDarkMode);
   const cameraActive = useStore((s) => s.cameraActive);
   const recording = useStore((s) => s.recording);
+  const currentPage = useStore((s) => s.currentPage);
+  const setCurrentPage = useStore((s) => s.setCurrentPage);
   const now = new Date();
+  const navItems: Array<{ key: PageKey; label: string }> = [
+    { key: "live-ops", label: "Live Ops" },
+    { key: "assistant", label: "Assistant" },
+    { key: "video-studio", label: "Video Studio" },
+  ];
 
   return (
     <header className="rounded-2xl border border-slate-700/60 bg-slate-900/70 px-4 py-3 shadow-lg shadow-slate-950/40 backdrop-blur-sm">
@@ -100,6 +107,26 @@ export default function TopNav() {
           </button>
         </div>
       </div>
+      <nav className="mt-3 flex flex-wrap items-center gap-2">
+        {navItems.map((item) => {
+          const active = currentPage === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setCurrentPage(item.key)}
+              aria-current={active ? "page" : undefined}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                active
+                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30"
+                  : "border border-slate-700 bg-slate-800/80 text-slate-200 hover:border-indigo-500/50 hover:bg-indigo-500/10 hover:text-white"
+              }`}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400 lg:hidden">
         <span className="rounded-md bg-slate-800 px-2 py-1">
           {now.toLocaleDateString()}

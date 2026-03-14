@@ -186,3 +186,64 @@ def build_video_summary_prompt(
             ),
         },
     ]
+
+
+def build_video_chat_messages(
+    user_query: str,
+    video_analysis: Dict[str, Any],
+) -> List[Dict[str, str]]:
+    """Build prompt messages for Q&A on a processed video analysis artifact."""
+    video = video_analysis.get("video", {})
+    summary = video_analysis.get("summary", {})
+    events = video_analysis.get("events", [])
+    keyframes = video_analysis.get("keyframes", [])
+
+    duration = float(video.get("duration_seconds", 0.0) or 0.0)
+    mins = int(duration // 60)
+    secs = int(duration % 60)
+
+    event_lines: List[str] = []
+    for evt in events[:80]:
+        ts = float(evt.get("timestamp_seconds", 0.0) or 0.0)
+        event_lines.append(
+            f"  [t={ts:.2f}s] {evt.get('event_type', 'event')} | "
+            f"{evt.get('class_name', 'unknown')} | track={evt.get('track_id', '?')}"
+        )
+
+    keyframe_lines: List[str] = []
+    for kf in keyframes[:30]:
+        keyframe_lines.append(
+            f"  frame={kf.get('frame_index')} t={kf.get('timestamp_seconds')}s path={kf.get('path')}"
+        )
+
+    unique_by_class = summary.get("unique_tracks_by_class", {})
+    detections_by_class = summary.get("frame_detections_by_class", {})
+
+    context = (
+        "Processed video analysis context:\n"
+        f"- Duration: {mins}m {secs}s\n"
+        f"- Total frames: {video.get('total_frames', 0)}\n"
+        f"- Frames processed: {video.get('frames_processed', 0)}\n"
+        f"- Unique tracks by class: {unique_by_class}\n"
+        f"- Frame detections by class: {detections_by_class}\n"
+        f"- Event count: {summary.get('events_count', 0)}\n"
+        f"- Keyframe count: {summary.get('keyframes_count', 0)}\n\n"
+        f"Sampled keyframes ({min(len(keyframes), 30)} shown):\n"
+        f"{chr(10).join(keyframe_lines) if keyframe_lines else '  none'}\n\n"
+        f"Events ({min(len(events), 80)} shown):\n"
+        f"{chr(10).join(event_lines) if event_lines else '  none'}\n"
+    )
+
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "system",
+            "content": (
+                "You are answering questions about a fully processed video. "
+                "Ground answers in the structured analysis and sampled keyframes metadata. "
+                "If data is insufficient, say what is missing."
+            ),
+        },
+        {"role": "system", "content": context},
+        {"role": "user", "content": user_query},
+    ]

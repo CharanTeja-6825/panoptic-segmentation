@@ -14,6 +14,7 @@ from app.llm.prompt_templates import (
     build_commentary_prompt,
     build_alert_prompt,
     build_video_summary_prompt,
+    build_video_chat_messages,
 )
 from app.llm.ollama_client import OllamaClient
 
@@ -161,6 +162,40 @@ class TestBuildVideoSummaryPrompt:
         messages = build_video_summary_prompt(events, 120.0)
         assert len(messages) == 2
         assert "2m 0s" in messages[1]["content"]
+
+
+class TestBuildVideoChatMessages:
+
+    def test_includes_analysis_summary_and_query(self):
+        analysis = {
+            "video": {
+                "duration_seconds": 125.0,
+                "total_frames": 250,
+                "frames_processed": 250,
+            },
+            "summary": {
+                "unique_tracks_by_class": {"person": 4},
+                "frame_detections_by_class": {"person": 120},
+                "events_count": 8,
+                "keyframes_count": 5,
+            },
+            "events": [
+                {
+                    "timestamp_seconds": 1.0,
+                    "event_type": "entry",
+                    "class_name": "person",
+                    "track_id": 1,
+                }
+            ],
+            "keyframes": [
+                {"frame_index": 0, "timestamp_seconds": 0.0, "path": "outputs/x.jpg"}
+            ],
+        }
+        messages = build_video_chat_messages("What happened?", analysis)
+        assert len(messages) >= 4
+        assert messages[-1]["role"] == "user"
+        assert messages[-1]["content"] == "What happened?"
+        assert any("Processed video analysis context" in m["content"] for m in messages)
 
 
 # ---------------------------------------------------------------------------

@@ -39,6 +39,8 @@ export interface AnalyticsData {
   uptime: number;
 }
 
+export type PageKey = "live-ops" | "assistant" | "video-studio";
+
 interface AppState {
   // Scene
   sceneObjects: SceneObject[];
@@ -61,6 +63,9 @@ interface AppState {
   availableModels: string[];
   selectedModel: string;
 
+  // Navigation
+  currentPage: PageKey;
+
   // Actions
   setSceneObjects: (objects: SceneObject[]) => void;
   addSceneEvent: (event: SceneEvent) => void;
@@ -81,6 +86,7 @@ interface AppState {
   setAnalytics: (data: Partial<AnalyticsData>) => void;
   setAvailableModels: (models: string[]) => void;
   setSelectedModel: (model: string) => void;
+  setCurrentPage: (page: PageKey) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -111,6 +117,7 @@ export const useStore = create<AppState>((set) => ({
   },
   availableModels: [],
   selectedModel: "",
+  currentPage: "live-ops",
 
   setSceneObjects: (objects) => set({ sceneObjects: objects }),
   addSceneEvent: (event) =>
@@ -153,4 +160,5 @@ export const useStore = create<AppState>((set) => ({
     })),
   setAvailableModels: (models) => set({ availableModels: models }),
   setSelectedModel: (model) => set({ selectedModel: model }),
+  setCurrentPage: (page) => set({ currentPage: page }),
 }));

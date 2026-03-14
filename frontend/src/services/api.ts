@@ -37,6 +37,11 @@ interface JobStatus {
   job_id: string;
   status: string;
   progress?: number;
+  total_frames?: number;
+  fps?: number;
+  download_url?: string;
+  analysis_url?: string;
+  error?: string | null;
   [key: string]: unknown;
 }
 
@@ -44,6 +49,19 @@ interface BenchmarkData {
   fps: number;
   latency: number;
   [key: string]: unknown;
+}
+
+interface VideoAnalysisResponse {
+  job_id: string;
+  status: string;
+  analysis: Record<string, unknown>;
+}
+
+interface VideoChatResponse {
+  job_id: string;
+  reply: string;
+  model: string;
+  used_keyframes: number;
 }
 
 async function request<T>(
@@ -140,6 +158,20 @@ export function processVideo(jobId: string): Promise<{ status: string }> {
 
 export function getJobStatus(jobId: string): Promise<JobStatus> {
   return request(`/api/job-status/${jobId}`);
+}
+
+export function getVideoAnalysis(jobId: string): Promise<VideoAnalysisResponse> {
+  return request(`/api/video-analysis/${jobId}`);
+}
+
+export function sendVideoChatMessage(
+  jobId: string,
+  data: ChatRequest & { max_keyframes?: number }
+): Promise<VideoChatResponse> {
+  return request(`/api/video-chat/${jobId}`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 // Benchmark

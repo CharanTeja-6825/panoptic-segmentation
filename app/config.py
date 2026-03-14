@@ -36,6 +36,9 @@ class AppConfig:
     )
     output_dir: str = os.environ.get("OUTPUT_DIR", "outputs")
     upload_dir: str = os.environ.get("UPLOAD_DIR", "uploads")
+    video_keyframe_interval_seconds: float = float(
+        os.environ.get("VIDEO_KEYFRAME_INTERVAL_SECONDS", "2.0")
+    )
 
     # Inference settings
     inference_input_size: int = int(os.environ.get("INFERENCE_INPUT_SIZE", "640"))
