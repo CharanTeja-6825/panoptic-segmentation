@@ -101,8 +101,8 @@ export default function ChatPanel() {
       <header className="app-panel-header">
         <div>
           <h2 className="app-panel-title">Explainable AI Assistant</h2>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Asks are grounded in live scene memory and latest camera frame
+          <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+            Grounded in live scene memory &amp; camera frame
           </p>
         </div>
         <span className="status-pill status-pill-muted">
@@ -110,9 +110,10 @@ export default function ChatPanel() {
         </span>
       </header>
 
+      {/* Messages area */}
       <div
         ref={messagesContainerRef}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-3 [overflow-anchor:none]"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4 [overflow-anchor:none]"
         onScroll={(event) => {
           const element = event.currentTarget;
           const distanceFromBottom =
@@ -121,31 +122,26 @@ export default function ChatPanel() {
         }}
       >
         {renderedMessages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-            <div className="rounded-full border border-slate-700 bg-slate-900 p-4">
-              <svg
-                className="h-8 w-8 text-indigo-300"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
-                />
+          <div className="empty-state">
+            <div className="empty-state-icon">
+              <svg className="h-7 w-7" style={{ color: "var(--color-accent-hover)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
               </svg>
             </div>
-            <p className="text-sm text-slate-300">
-              Ask for explanation, risk analysis, or scene summaries.
-            </p>
+            <div>
+              <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+                Ask about the scene
+              </p>
+              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                Get explanations, risk analysis, or scene summaries.
+              </p>
+            </div>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTED_QUERIES.map((query) => (
                 <button
                   key={query}
                   onClick={() => handleSend(query)}
-                  className="rounded-full border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-200 transition-colors hover:border-indigo-500/50 hover:bg-indigo-500/10 hover:text-indigo-200"
+                  className="filter-chip text-left transition-all hover:border-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
                 >
                   {query}
                 </button>
@@ -153,28 +149,18 @@ export default function ChatPanel() {
             </div>
           </div>
         ) : (
-            <div className="space-y-3">
-              {renderedMessages.map((msg) => (
+          <div className="space-y-3">
+            {renderedMessages.map((msg) => (
               <article
                 key={msg.id}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`fade-in flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
-                <div
-                  className={`max-w-[86%] rounded-2xl px-4 py-3 text-sm shadow ${
-                    msg.role === "user"
-                      ? "bg-indigo-600 text-white shadow-indigo-900/40"
-                      : "border border-slate-700 bg-slate-800 text-slate-100 shadow-slate-950/30"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                  <div
-                    className={`mt-2 text-[11px] ${
-                      msg.role === "user" ? "text-indigo-200" : "text-slate-400"
-                    }`}
-                  >
-                    {new Date(msg.timestamp).toLocaleTimeString()}
-                    {msg.model ? ` · ${msg.model}` : ""}
-                    {msg.streaming ? " · typing…" : ""}
+                <div className={msg.role === "user" ? "chat-bubble chat-bubble-user" : "chat-bubble chat-bubble-assistant"}>
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  <div className="mt-2 flex items-center gap-1.5 text-[11px]" style={{ opacity: 0.7 }}>
+                    <span>{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                    {msg.model ? <><span>·</span><span>{msg.model}</span></> : null}
+                    {msg.streaming ? <><span>·</span><span className="pulse-dot inline-block h-1.5 w-1.5" style={{ background: "var(--color-accent-hover)" }} /></> : null}
                   </div>
                 </div>
               </article>
@@ -184,7 +170,8 @@ export default function ChatPanel() {
         )}
       </div>
 
-      <footer className="border-t border-slate-700/60 p-3">
+      {/* Input area */}
+      <footer className="p-3" style={{ borderTop: "1px solid var(--color-border)" }}>
         <div className="flex items-center gap-2">
           <input
             type="text"
@@ -196,16 +183,26 @@ export default function ChatPanel() {
                 handleSend(input);
               }
             }}
-            placeholder="Ask the assistant about this scene..."
-            className="h-11 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 text-sm text-slate-100 outline-none transition-colors focus:border-indigo-500/70 focus:ring-2 focus:ring-indigo-500/20"
+            placeholder="Ask the assistant about this scene…"
+            className="input-field h-11 flex-1"
             disabled={chatLoading}
           />
           <button
             onClick={() => handleSend(input)}
             disabled={chatLoading || !input.trim()}
-            className="h-11 rounded-xl bg-indigo-600 px-4 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="btn btn-primary h-11 shrink-0"
           >
-            {chatLoading ? "Sending..." : "Send"}
+            {chatLoading ? (
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+              </svg>
+            )}
+            Send
           </button>
         </div>
       </footer>
