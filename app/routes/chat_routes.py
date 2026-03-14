@@ -19,9 +19,11 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.config import config
 from app.llm.ollama_client import OllamaClient
 from app.llm.prompt_templates import build_chat_messages
 from app.memory.scene_memory import SceneMemory
+from app.routes.camera_routes import get_latest_frame_jpeg
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -43,6 +45,23 @@ def init_chat_routes(
     global _ollama_client, _scene_memory
     _ollama_client = ollama_client
     _scene_memory = scene_memory
+
+
+def _with_latest_frame_context(messages: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], bool]:
+    """Attach the latest camera frame to the last user message when available."""
+    if _ollama_client is None:
+        return messages, False
+    frame_jpeg = get_latest_frame_jpeg()
+    if frame_jpeg is None or not messages:
+        return messages, False
+
+    enriched = list(messages)
+    last_msg = dict(enriched[-1])
+    images = list(last_msg.get("images", []))
+    images.append(_ollama_client.encode_image_bytes(frame_jpeg))
+    last_msg["images"] = images
+    enriched[-1] = last_msg
+    return enriched, True
 
 
 class ChatRequest(BaseModel):
@@ -78,10 +97,14 @@ async def chat_message(req: ChatRequest) -> JSONResponse:
         scene_summary=scene_summary,
         chat_history=history_snapshot,
     )
+    messages, has_live_frame = _with_latest_frame_context(messages)
+    selected_model = req.model or (
+        config.ollama_vision_model if has_live_frame else _ollama_client.model
+    )
 
     reply = await _ollama_client.chat(
         messages=messages,
-        model=req.model,
+        model=selected_model,
         temperature=req.temperature,
     )
 
@@ -95,7 +118,7 @@ async def chat_message(req: ChatRequest) -> JSONResponse:
     return JSONResponse({
         "reply": reply,
         "timestamp": time.time(),
-        "model": req.model or _ollama_client.model,
+        "model": selected_model,
     })
 
 
@@ -116,14 +139,17 @@ async def chat_stream_ws(websocket: WebSocket) -> None:
                 await websocket.send_json({"error": "Invalid JSON"})
                 continue
 
-            message = payload.get("message", "")
+            message = str(payload.get("message", "")).strip()
             if not message:
-                await websocket.send_json({"error": "Empty message"})
+                await websocket.send_json({
+                    "type": "chat_error",
+                    "error": "Empty message",
+                })
                 continue
 
             if _ollama_client is None or _scene_memory is None:
                 await websocket.send_json(
-                    {"error": "LLM service not available"}
+                    {"type": "chat_error", "error": "LLM service not available"}
                 )
                 continue
 
@@ -137,17 +163,32 @@ async def chat_stream_ws(websocket: WebSocket) -> None:
                 scene_summary=scene_summary,
                 chat_history=history_snapshot,
             )
+            messages, has_live_frame = _with_latest_frame_context(messages)
+            selected_model = payload.get("model") or (
+                config.ollama_vision_model if has_live_frame else _ollama_client.model
+            )
+
+            stream_id = f"chat-{int(time.time() * 1000)}"
+            await websocket.send_json({
+                "type": "chat_start",
+                "id": stream_id,
+                "model": selected_model,
+            })
 
             full_reply = []
             async for token in _ollama_client.chat_stream(
                 messages=messages,
-                model=payload.get("model"),
+                model=selected_model,
                 temperature=payload.get("temperature", 0.7),
             ):
                 full_reply.append(token)
-                await websocket.send_json({"token": token, "done": False})
+                await websocket.send_json({
+                    "type": "chat_token",
+                    "id": stream_id,
+                    "token": token,
+                })
 
-            await websocket.send_json({"done": True})
+            await websocket.send_json({"type": "chat_end", "id": stream_id})
 
             # Store in history
             reply_text = "".join(full_reply)

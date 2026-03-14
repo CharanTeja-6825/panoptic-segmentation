@@ -83,6 +83,9 @@ class AppConfig:
     # Ollama LLM settings
     ollama_base_url: str = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     ollama_model: str = os.environ.get("OLLAMA_MODEL", "llama3.2")
+    ollama_vision_model: str = os.environ.get(
+        "OLLAMA_VISION_MODEL", "llama3.2-vision:latest"
+    )
     ollama_timeout: float = float(os.environ.get("OLLAMA_TIMEOUT", "120"))
 
     # Commentary engine

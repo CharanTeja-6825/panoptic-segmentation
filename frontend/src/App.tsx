@@ -8,22 +8,24 @@ import ControlPanel from "./components/ControlPanel";
 export default function App() {
   return (
     <DashboardLayout>
-      {/* Top Left - Live Feed */}
-      <LiveFeed />
+      <section className="min-h-[24rem] xl:min-h-0 xl:col-span-7 xl:row-span-4">
+        <LiveFeed />
+      </section>
 
-      {/* Top Right - Chat */}
-      <ChatPanel />
+      <section className="min-h-[24rem] xl:min-h-0 xl:col-span-5 xl:row-span-4">
+        <ChatPanel />
+      </section>
 
-      {/* Bottom Left - Events + Controls */}
-      <div className="flex flex-col gap-4 overflow-hidden">
-        <div className="flex-1 overflow-hidden">
+      <section className="flex min-h-[24rem] flex-col gap-3 md:gap-4 xl:min-h-0 xl:col-span-7 xl:row-span-2">
+        <div className="min-h-0 flex-1">
           <EventTimeline />
         </div>
         <ControlPanel />
-      </div>
+      </section>
 
-      {/* Bottom Right - Stats */}
-      <StatsPanel />
+      <section className="min-h-[24rem] xl:min-h-0 xl:col-span-5 xl:row-span-2">
+        <StatsPanel />
+      </section>
     </DashboardLayout>
   );
 }

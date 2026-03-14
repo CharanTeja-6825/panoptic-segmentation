@@ -1,31 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStore, SceneEvent } from "../store/useStore";
 import { getSceneEvents } from "../services/api";
 import { eventSocket } from "../services/websocket";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { normalizeSceneEvent } from "../lib/mappers";
 
 type FilterType = "all" | SceneEvent["type"];
 
-const EVENT_ICONS: Record<string, string> = {
-  detection: "🔍",
-  alert: "🚨",
-  info: "ℹ️",
-  warning: "⚠️",
-  system: "⚙️",
-};
-
-const EVENT_COLORS: Record<string, string> = {
-  detection: "border-indigo-500/30 bg-indigo-500/5",
-  alert: "border-rose-500/30 bg-rose-500/5",
-  info: "border-sky-500/30 bg-sky-500/5",
-  warning: "border-amber-500/30 bg-amber-500/5",
-  system: "border-slate-500/30 bg-slate-500/5",
-};
-
-const SEVERITY_DOT: Record<string, string> = {
-  low: "bg-emerald-400",
-  medium: "bg-amber-400",
-  high: "bg-rose-400",
+const EVENT_COLORS: Record<SceneEvent["type"], string> = {
+  detection: "border-indigo-500/30 bg-indigo-500/10 text-indigo-100",
+  alert: "border-rose-500/30 bg-rose-500/10 text-rose-100",
+  info: "border-sky-500/30 bg-sky-500/10 text-sky-100",
+  warning: "border-amber-500/30 bg-amber-500/10 text-amber-100",
+  system: "border-slate-500/30 bg-slate-500/10 text-slate-100",
 };
 
 export default function EventTimeline() {
@@ -37,27 +24,27 @@ export default function EventTimeline() {
   useWebSocket(eventSocket, "message", (data) => {
     const msg = data as Record<string, unknown>;
     if (msg.type === "event" && msg.event) {
-      const evt = msg.event as Record<string, unknown>;
-      addSceneEvent({
-        id: String(evt.id ?? Date.now()),
-        type: (String(evt.type ?? "info")) as SceneEvent["type"],
-        message: String(evt.message ?? ""),
-        timestamp: String(evt.timestamp ?? new Date().toISOString()),
-        severity: evt.severity as SceneEvent["severity"],
-      });
+      addSceneEvent(normalizeSceneEvent(msg.event as Record<string, unknown>));
     }
   });
 
   useEffect(() => {
     getSceneEvents()
-      .then((events) => setSceneEvents(events))
-      .catch(() => {});
+      .then((events) => {
+        const normalized = events.map((evt) =>
+          normalizeSceneEvent(evt as Record<string, unknown>)
+        );
+        setSceneEvents(normalized);
+      })
+      .catch(() => {
+        setSceneEvents([]);
+      });
   }, [setSceneEvents]);
 
-  const filtered =
-    filter === "all"
-      ? sceneEvents
-      : sceneEvents.filter((e) => e.type === filter);
+  const filtered = useMemo(() => {
+    if (filter === "all") return sceneEvents;
+    return sceneEvents.filter((event) => event.type === filter);
+  }, [filter, sceneEvents]);
 
   const filters: FilterType[] = [
     "all",
@@ -69,107 +56,72 @@ export default function EventTimeline() {
   ];
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-slate-700/50 bg-slate-800 shadow-lg">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-700/50 px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <svg
-            className="h-4 w-4 text-indigo-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <h2 className="text-sm font-semibold text-slate-200">Events</h2>
+    <section className="app-panel">
+      <header className="app-panel-header">
+        <div>
+          <h2 className="app-panel-title">Event Timeline</h2>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Live scene events from tracking and behavior changes
+          </p>
         </div>
-        <span className="rounded-md bg-slate-700/50 px-2 py-0.5 text-xs text-slate-400">
-          {filtered.length} events
-        </span>
-      </div>
+        <span className="status-pill status-pill-muted">{filtered.length} events</span>
+      </header>
 
-      {/* Filters */}
-      <div className="flex gap-1 overflow-x-auto border-b border-slate-700/30 px-4 py-2">
-        {filters.map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-              filter === f
-                ? "bg-indigo-600/20 text-indigo-300"
-                : "text-slate-400 hover:bg-slate-700/50 hover:text-slate-300"
-            }`}
-          >
-            {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      {/* Event List */}
-      <div className="flex-1 overflow-y-auto p-3">
-        {filtered.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 py-8">
-            <svg
-              className="h-8 w-8 text-slate-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
+      <div className="border-b border-slate-700/60 px-4 py-2">
+        <div className="flex flex-wrap gap-1.5">
+          {filters.map((item) => (
+            <button
+              key={item}
+              onClick={() => setFilter(item)}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                filter === item
+                  ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-200"
+                  : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600 hover:bg-slate-700"
+              }`}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <p className="text-xs text-slate-500">No events yet</p>
+              {item === "all"
+                ? "All"
+                : item.charAt(0).toUpperCase() + item.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {filtered.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-sm text-slate-500">
+            No events available for this filter.
           </div>
         ) : (
-          <div className="space-y-2">
+          <ol className="space-y-2">
             {filtered.map((event) => (
-              <div
+              <li
                 key={event.id}
-                className={`rounded-lg border px-3 py-2.5 transition-colors hover:bg-slate-700/30 ${
-                  EVENT_COLORS[event.type] ?? EVENT_COLORS.info
-                }`}
+                className={`rounded-xl border px-3 py-2.5 ${EVENT_COLORS[event.type]}`}
               >
-                <div className="flex items-start gap-2.5">
-                  <span className="mt-0.5 text-sm">
-                    {EVENT_ICONS[event.type] ?? "📌"}
+                <div className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 flex-1 break-words text-sm leading-snug">
+                    {event.message}
+                  </p>
+                  <span className="shrink-0 text-[11px] text-slate-300">
+                    {new Date(event.timestamp).toLocaleTimeString()}
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm leading-snug text-slate-200">
-                      {event.message}
-                    </p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <span className="text-[10px] text-slate-500">
-                        {new Date(event.timestamp).toLocaleTimeString()}
-                      </span>
-                      {event.severity && (
-                        <span className="flex items-center gap-1">
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              SEVERITY_DOT[event.severity] ?? SEVERITY_DOT.low
-                            }`}
-                          />
-                          <span className="text-[10px] text-slate-500">
-                            {event.severity}
-                          </span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
                 </div>
-              </div>
+                <div className="mt-2 flex items-center gap-2 text-[11px]">
+                  <span className="rounded bg-black/20 px-1.5 py-0.5 uppercase tracking-wide">
+                    {event.type}
+                  </span>
+                  {event.severity && (
+                    <span className="rounded bg-black/20 px-1.5 py-0.5 uppercase tracking-wide">
+                      {event.severity}
+                    </span>
+                  )}
+                </div>
+              </li>
             ))}
-          </div>
+          </ol>
         )}
       </div>
-    </div>
+    </section>
   );
 }

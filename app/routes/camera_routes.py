@@ -12,6 +12,7 @@ import asyncio
 import logging
 import threading
 import time
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
 import cv2
@@ -24,6 +25,7 @@ from app.inference.panoptic_predictor import PanopticPredictor
 from app.inference.tracker import ObjectTracker
 from app.analytics.heatmap_generator import HeatmapGenerator
 from app.routes.analytics_routes import get_event_logger, get_object_counter
+from app.routes.scene_routes import broadcast_event
 from app.utils.fps_counter import FPSCounter
 from app.utils.visualization import build_mjpeg_frame, draw_fps, encode_jpeg
 
@@ -59,18 +61,28 @@ class CameraState:
         )
         self._show_heatmap: bool = False
         self._depth_estimator = None
+        self._scene_memory = None
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
 
     # ------------------------------------------------------------------
     # Control
     # ------------------------------------------------------------------
 
-    def start(self, predictor: PanopticPredictor, depth_estimator=None) -> None:
+    def start(
+        self,
+        predictor: PanopticPredictor,
+        depth_estimator=None,
+        scene_memory=None,
+        event_loop: Optional[asyncio.AbstractEventLoop] = None,
+    ) -> None:
         """Start the background capture + inference loop."""
         with self._lock:
             if self._running:
                 return
             self._predictor = predictor
             self._depth_estimator = depth_estimator
+            self._scene_memory = scene_memory
+            self._event_loop = event_loop
             self._cap = cv2.VideoCapture(config.camera_index)
             if not self._cap.isOpened():
                 self._cap = None
@@ -100,6 +112,8 @@ class CameraState:
                 self._cap = None
         self._tracker.reset()
         self._heatmap.reset()
+        self._scene_memory = None
+        self._event_loop = None
         logger.info("Camera capture stopped.")
 
     # ------------------------------------------------------------------
@@ -129,6 +143,20 @@ class CameraState:
             if self._latest_annotated is None:
                 return None
             return self._latest_annotated.copy()
+
+    def get_latest_frame(self) -> Optional[np.ndarray]:
+        """Return a copy of the latest raw frame (thread-safe)."""
+        with self._lock:
+            if self._latest_frame is None:
+                return None
+            return self._latest_frame.copy()
+
+    def get_latest_frame_jpeg(self) -> Optional[bytes]:
+        """Return the latest raw frame encoded as JPEG bytes."""
+        frame = self.get_latest_frame()
+        if frame is None:
+            return None
+        return encode_jpeg(frame, quality=config.jpeg_quality)
 
     # ------------------------------------------------------------------
     # Background capture loop
@@ -168,6 +196,7 @@ class CameraState:
                 counter.update(tracked, self._fps_counter.fps)
                 event_logger.update(tracked)
                 self._heatmap.update(tracked)
+                self._publish_scene_updates(tracked, frame.shape[1], frame.shape[0])
 
                 # Depth estimation (optional)
                 depth_estimator = self._depth_estimator
@@ -223,9 +252,67 @@ class CameraState:
             # Throttle to target FPS
             time.sleep(max(0, delay - 0.001))
 
+    def _publish_scene_updates(self, tracked: list, width: int, height: int) -> None:
+        scene_memory = self._scene_memory
+        if scene_memory is None:
+            return
+
+        events = scene_memory.update_scene(tracked, fps=self._fps_counter.fps)
+        objects_payload = [self._to_scene_object(o, width, height) for o in tracked]
+        self._publish_ws_event({"type": "scene_update", "objects": objects_payload})
+
+        for evt in events:
+            level = "high" if evt.event_type == "exit" else "low"
+            event_payload = {
+                "type": "event",
+                "event": {
+                    "id": f"evt-{int(evt.timestamp * 1000)}-{evt.event_type}",
+                    "type": "detection",
+                    "message": evt.description,
+                    "timestamp": datetime.fromtimestamp(
+                        evt.timestamp, tz=timezone.utc
+                    ).isoformat(),
+                    "severity": level,
+                    "event_type": evt.event_type,
+                    "metadata": evt.metadata,
+                },
+            }
+            self._publish_ws_event(event_payload)
+
+    def _publish_ws_event(self, payload: dict) -> None:
+        loop = self._event_loop
+        if loop is None or loop.is_closed():
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(broadcast_event(payload), loop)
+        except Exception as exc:
+            logger.debug("Failed to schedule scene event broadcast: %s", exc)
+
+    @staticmethod
+    def _to_scene_object(obj, width: int, height: int) -> dict:
+        width = max(width, 1)
+        height = max(height, 1)
+        x1, y1, x2, y2 = obj.bbox
+        return {
+            "id": str(obj.track_id),
+            "label": obj.class_name,
+            "confidence": float(obj.confidence),
+            "bbox": [
+                (x1 / width) * 100.0,
+                (y1 / height) * 100.0,
+                (x2 / width) * 100.0,
+                (y2 / height) * 100.0,
+            ],
+        }
+
 
 # Module-level singleton
 _camera_state = CameraState()
+
+
+def get_latest_frame_jpeg() -> Optional[bytes]:
+    """Expose latest camera frame for other modules (e.g. vision chat)."""
+    return _camera_state.get_latest_frame_jpeg()
 
 
 # ---------------------------------------------------------------------------
@@ -245,10 +332,11 @@ async def start_camera(request: Request) -> JSONResponse:
 
     predictor = _get_predictor(request)
     depth_estimator = getattr(request.app.state, "depth_estimator", None)
+    scene_memory = getattr(request.app.state, "scene_memory", None)
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(
-            None, _camera_state.start, predictor, depth_estimator
+            None, _camera_state.start, predictor, depth_estimator, scene_memory, loop
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -295,10 +383,11 @@ async def camera_stream(request: Request) -> StreamingResponse:
     if not _camera_state.is_running:
         predictor = _get_predictor(request)
         depth_estimator = getattr(request.app.state, "depth_estimator", None)
+        scene_memory = getattr(request.app.state, "scene_memory", None)
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
-                None, _camera_state.start, predictor, depth_estimator
+                None, _camera_state.start, predictor, depth_estimator, scene_memory, loop
             )
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc

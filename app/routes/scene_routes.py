@@ -150,6 +150,8 @@ async def scene_commentary(
     """Return recent auto-generated commentary."""
     if _commentary_engine is None:
         return JSONResponse({"commentary": []})
+    # Opportunistically generate a fresh entry when requested.
+    await _commentary_engine.maybe_generate_commentary()
     return JSONResponse({
         "commentary": _commentary_engine.get_recent_commentary(limit=limit)
     })

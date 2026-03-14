@@ -27,16 +27,8 @@ interface SceneState {
   [key: string]: unknown;
 }
 
-interface SceneEvent {
-  id: string;
-  type: "detection" | "alert" | "info" | "warning" | "system";
-  message: string;
-  timestamp: string;
-  severity?: "low" | "medium" | "high";
-}
-
 interface LLMStatus {
-  connected: boolean;
+  available: boolean;
   model?: string;
   [key: string]: unknown;
 }
@@ -108,7 +100,7 @@ export function getSceneState(): Promise<SceneState> {
   return request("/api/scene/state");
 }
 
-export function getSceneEvents(): Promise<SceneEvent[]> {
+export function getSceneEvents(): Promise<Array<Record<string, unknown>>> {
   return request("/api/scene/events");
 }
 
@@ -116,7 +108,7 @@ export function getSceneSummary(): Promise<{ summary: string }> {
   return request("/api/scene/summary");
 }
 
-export function getSceneCommentary(): Promise<{ commentary: string }> {
+export function getSceneCommentary(): Promise<{ commentary: unknown[] }> {
   return request("/api/scene/commentary");
 }
 
@@ -125,7 +117,7 @@ export function getLLMStatus(): Promise<LLMStatus> {
   return request("/api/llm/status");
 }
 
-export function getLLMModels(): Promise<{ models: string[] }> {
+export function getLLMModels(): Promise<{ models: Array<{ name: string; size: number }> }> {
   return request("/api/llm/models");
 }
 

@@ -1,41 +1,43 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useStore } from "../store/useStore";
-import { getLiveAnalytics, getBenchmark } from "../services/api";
+import { getBenchmark, getLiveAnalytics } from "../services/api";
+import { summarizeObjectCounts } from "../lib/mappers";
 
 export default function StatsPanel() {
   const analytics = useStore((s) => s.analytics);
-  const setAnalytics = useStore((s) => s.setAnalytics);
   const sceneObjects = useStore((s) => s.sceneObjects);
+  const setAnalytics = useStore((s) => s.setAnalytics);
+  const addSceneEvent = useStore((s) => s.addSceneEvent);
 
   useEffect(() => {
     let mounted = true;
 
     const fetchAnalytics = async () => {
-      try {
-        const [live, bench] = await Promise.all([
-          getLiveAnalytics().catch(() => null),
-          getBenchmark().catch(() => null),
-        ]);
-        if (!mounted) return;
+      const [live, bench] = await Promise.all([
+        getLiveAnalytics().catch(() => null),
+        getBenchmark().catch(() => null),
+      ]);
+      if (!mounted) return;
 
-        const objectCounts = sceneObjects.reduce<Record<string, number>>(
-          (acc, obj) => {
-            acc[obj.label] = (acc[obj.label] ?? 0) + 1;
-            return acc;
-          },
-          {}
-        );
-
-        setAnalytics({
-          totalDetections: sceneObjects.length,
-          objectCounts,
-          fps: bench?.fps ?? analytics.fps,
-          latency: bench?.latency ?? analytics.latency,
-          ...(live as Record<string, unknown> | null),
+      if (!live && !bench) {
+        addSceneEvent({
+          id: `analytics-${Date.now()}`,
+          type: "system",
+          message: "Analytics endpoint is temporarily unavailable.",
+          timestamp: new Date().toISOString(),
+          severity: "medium",
         });
-      } catch {
-        // Silently handle errors
+        return;
       }
+
+      const objectCounts = summarizeObjectCounts(sceneObjects);
+      setAnalytics({
+        totalDetections: sceneObjects.length,
+        objectCounts,
+        fps: Number(bench?.fps ?? analytics.fps ?? 0),
+        latency: Number(bench?.latency ?? analytics.latency ?? 0),
+        ...(live as Record<string, unknown> | null),
+      });
     };
 
     fetchAnalytics();
@@ -44,142 +46,102 @@ export default function StatsPanel() {
       mounted = false;
       clearInterval(interval);
     };
-  }, [sceneObjects, setAnalytics, analytics.fps, analytics.latency]);
+  }, [sceneObjects, setAnalytics, analytics.fps, analytics.latency, addSceneEvent]);
 
-  const objectEntries = Object.entries(analytics.objectCounts);
+  const objectEntries = useMemo(
+    () => Object.entries(analytics.objectCounts).sort(([, a], [, b]) => b - a),
+    [analytics.objectCounts]
+  );
   const maxCount = Math.max(...objectEntries.map(([, c]) => c), 1);
+  const avgConfidence =
+    sceneObjects.length > 0
+      ? (sceneObjects.reduce((sum, obj) => sum + obj.confidence, 0) /
+          sceneObjects.length) *
+        100
+      : 0;
 
-  const statCards = [
-    {
-      label: "Objects",
-      value: analytics.totalDetections,
-      color: "text-indigo-400",
-      bg: "bg-indigo-500/10",
-    },
-    {
-      label: "FPS",
-      value: analytics.fps.toFixed(1),
-      color: "text-emerald-400",
-      bg: "bg-emerald-500/10",
-    },
+  const cards = [
+    { label: "Objects", value: analytics.totalDetections, hint: "Live detections" },
+    { label: "FPS", value: analytics.fps.toFixed(1), hint: "Inference speed" },
     {
       label: "Latency",
       value: `${analytics.latency.toFixed(0)}ms`,
-      color: "text-amber-400",
-      bg: "bg-amber-500/10",
+      hint: "Pipeline delay",
     },
-    {
-      label: "Classes",
-      value: objectEntries.length,
-      color: "text-sky-400",
-      bg: "bg-sky-500/10",
-    },
+    { label: "Classes", value: objectEntries.length, hint: "Unique labels" },
   ];
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-slate-700/50 bg-slate-800 shadow-lg">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-700/50 px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <svg
-            className="h-4 w-4 text-indigo-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-            />
-          </svg>
-          <h2 className="text-sm font-semibold text-slate-200">Analytics</h2>
+    <section className="app-panel">
+      <header className="app-panel-header">
+        <div>
+          <h2 className="app-panel-title">Analytics Overview</h2>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Operational metrics and object distribution
+          </p>
         </div>
-      </div>
+      </header>
 
-      <div className="flex-1 overflow-y-auto p-4">
-        {/* Stat Cards */}
-        <div className="mb-4 grid grid-cols-2 gap-2">
-          {statCards.map((stat) => (
-            <div
-              key={stat.label}
-              className={`rounded-lg ${stat.bg} p-3 text-center`}
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="grid grid-cols-2 gap-2">
+          {cards.map((card) => (
+            <article
+              key={card.label}
+              className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5"
             >
-              <p className={`text-xl font-bold ${stat.color}`}>{stat.value}</p>
-              <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-slate-400">
-                {stat.label}
+              <p className="text-lg font-semibold text-slate-100">{card.value}</p>
+              <p className="text-[11px] uppercase tracking-wider text-slate-400">
+                {card.label}
               </p>
-            </div>
+              <p className="mt-1 text-[11px] text-slate-500">{card.hint}</p>
+            </article>
           ))}
         </div>
 
-        {/* Object Distribution */}
-        <div>
-          <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-slate-400">
-            Object Distribution
+        <section className="mt-4 rounded-xl border border-slate-700 bg-slate-900 p-3">
+          <h3 className="text-xs font-medium uppercase tracking-wider text-slate-400">
+            Distribution by class
           </h3>
           {objectEntries.length === 0 ? (
-            <p className="py-4 text-center text-xs text-slate-500">
-              No detections yet
+            <p className="py-4 text-center text-sm text-slate-500">
+              Waiting for detections...
             </p>
           ) : (
-            <div className="space-y-2.5">
-              {objectEntries
-                .sort(([, a], [, b]) => b - a)
-                .map(([label, count]) => (
-                  <div key={label}>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-xs text-slate-300">{label}</span>
-                      <span className="text-xs font-semibold text-slate-200">
-                        {count}
-                      </span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-700">
-                      <div
-                        className="h-full rounded-full bg-indigo-500 transition-all duration-500"
-                        style={{
-                          width: `${(count / maxCount) * 100}%`,
-                        }}
-                      />
-                    </div>
+            <div className="mt-3 space-y-2.5">
+              {objectEntries.map(([label, count]) => (
+                <div key={label}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="text-slate-300">{label}</span>
+                    <span className="font-semibold text-slate-100">{count}</span>
                   </div>
-                ))}
+                  <div className="h-1.5 rounded-full bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-indigo-500"
+                      style={{ width: `${(count / maxCount) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Activity Summary */}
-        <div className="mt-4 rounded-lg border border-slate-700/30 bg-slate-700/20 p-3">
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-400">
-            Activity Summary
-          </h3>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-400">Total detections</span>
-            <span className="font-semibold text-slate-200">
+        <section className="mt-4 rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs">
+          <h3 className="mb-2 uppercase tracking-wider text-slate-400">Confidence</h3>
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400">Average confidence</span>
+            <span className="font-semibold text-slate-100">
+              {sceneObjects.length ? `${avgConfidence.toFixed(1)}%` : "—"}
+            </span>
+          </div>
+          <div className="mt-1.5 flex items-center justify-between">
+            <span className="text-slate-400">Total tracked objects</span>
+            <span className="font-semibold text-slate-100">
               {analytics.totalDetections}
             </span>
           </div>
-          <div className="mt-1.5 flex items-center justify-between text-xs">
-            <span className="text-slate-400">Unique classes</span>
-            <span className="font-semibold text-slate-200">
-              {objectEntries.length}
-            </span>
-          </div>
-          <div className="mt-1.5 flex items-center justify-between text-xs">
-            <span className="text-slate-400">Avg confidence</span>
-            <span className="font-semibold text-slate-200">
-              {sceneObjects.length > 0
-                ? `${(
-                    (sceneObjects.reduce((s, o) => s + o.confidence, 0) /
-                      sceneObjects.length) *
-                    100
-                  ).toFixed(1)}%`
-                : "—"}
-            </span>
-          </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </section>
   );
 }

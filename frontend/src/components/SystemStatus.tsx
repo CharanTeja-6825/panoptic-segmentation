@@ -19,7 +19,7 @@ export default function SystemStatus() {
 
       try {
         const status = await getLLMStatus();
-        if (mounted) setSystemHealth({ llm: status.connected });
+        if (mounted) setSystemHealth({ llm: Boolean(status.available) });
       } catch {
         if (mounted) setSystemHealth({ llm: false });
       }
@@ -33,27 +33,36 @@ export default function SystemStatus() {
     };
   }, [setSystemHealth]);
 
-  const services = [
-    { label: "API", ok: systemHealth.api },
-    { label: "Camera", ok: systemHealth.camera },
-    { label: "LLM", ok: systemHealth.llm },
-    { label: "WS", ok: systemHealth.websocket },
+  const services: Array<{ key: keyof typeof systemHealth; label: string }> = [
+    { key: "api", label: "API" },
+    { key: "camera", label: "Camera" },
+    { key: "llm", label: "LLM" },
+    { key: "websocket", label: "WebSocket" },
   ];
 
   return (
-    <div className="flex items-center gap-3">
-      {services.map((s) => (
-        <div key={s.label} className="flex items-center gap-1.5" title={`${s.label}: ${s.ok ? "Connected" : "Disconnected"}`}>
+    <div className="flex flex-wrap items-center gap-2">
+      {services.map((service) => {
+        const ok = systemHealth[service.key];
+        return (
+          <div
+            key={service.label}
+            className="status-pill status-pill-muted"
+            title={`${service.label}: ${ok ? "Connected" : "Disconnected"}`}
+          >
           <span
-            className={`h-2 w-2 rounded-full ${
-              s.ok
+              className={`h-2 w-2 rounded-full ${
+                ok
                 ? "bg-emerald-400 shadow-sm shadow-emerald-400/50"
                 : "bg-slate-500"
-            }`}
-          />
-          <span className="text-xs text-slate-400">{s.label}</span>
-        </div>
-      ))}
+              }`}
+            />
+            <span className={ok ? "text-emerald-200" : "text-slate-300"}>
+              {service.label}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { useStore } from "../store/useStore";
 import TopNav from "../components/TopNav";
 
 interface DashboardLayoutProps {
@@ -6,14 +7,18 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
+  const darkMode = useStore((s) => s.darkMode);
+
   return (
-    <div className="flex h-screen flex-col bg-slate-900 text-slate-100">
-      <TopNav />
-      <main className="flex-1 overflow-hidden p-4">
-        <div className="grid h-full grid-cols-1 gap-4 lg:grid-cols-2 lg:grid-rows-2">
-          {children}
-        </div>
-      </main>
+    <div className={darkMode ? "dark" : ""}>
+      <div className="app-shell">
+        <TopNav />
+        <main className="mt-3 min-h-0 flex-1 overflow-y-auto xl:overflow-hidden">
+          <div className="grid min-h-full grid-cols-1 auto-rows-[minmax(20rem,auto)] gap-3 md:gap-4 xl:h-full xl:min-h-0 xl:auto-rows-fr xl:grid-cols-12 xl:grid-rows-6">
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
