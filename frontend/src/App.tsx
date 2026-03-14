@@ -17,19 +17,19 @@ const PAGE_GRID: Record<PageKey, string> = {
 function LiveOpsPage() {
   return (
     <>
-      <section className="min-h-[22rem] xl:col-span-8 xl:row-span-3">
+      <section className="min-h-[20rem] xl:col-span-8 xl:row-span-3">
         <LiveFeed />
       </section>
 
-      <section className="min-h-[18rem] xl:col-span-4 xl:row-span-2">
+      <section className="min-h-[16rem] xl:col-span-4 xl:row-span-2">
         <StatsPanel />
       </section>
 
-      <section className="min-h-[16rem] xl:col-span-4 xl:row-span-2">
+      <section className="min-h-[14rem] xl:col-span-4 xl:row-span-2">
         <ControlPanel />
       </section>
 
-      <section className="min-h-[18rem] xl:col-span-8 xl:row-span-1">
+      <section className="min-h-[16rem] xl:col-span-8 xl:row-span-1">
         <EventTimeline />
       </section>
     </>
@@ -39,11 +39,11 @@ function LiveOpsPage() {
 function AssistantPage() {
   return (
     <>
-      <section className="min-h-[24rem] xl:col-span-7 xl:row-span-3">
+      <section className="min-h-[22rem] xl:col-span-7 xl:row-span-3">
         <ChatPanel />
       </section>
 
-      <section className="min-h-[24rem] xl:col-span-5 xl:row-span-3">
+      <section className="min-h-[22rem] xl:col-span-5 xl:row-span-3">
         <EventTimeline />
       </section>
     </>
@@ -52,7 +52,7 @@ function AssistantPage() {
 
 function VideoStudioPage() {
   return (
-    <section className="min-h-[28rem] xl:col-span-12 xl:row-span-3">
+    <section className="min-h-[26rem] xl:col-span-12 xl:row-span-3">
       <VideoWorkflowPanel />
     </section>
   );

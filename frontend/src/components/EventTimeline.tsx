@@ -7,12 +7,12 @@ import { normalizeSceneEvent } from "../lib/mappers";
 
 type FilterType = "all" | SceneEvent["type"];
 
-const EVENT_COLORS: Record<SceneEvent["type"], string> = {
-  detection: "border-indigo-500/30 bg-indigo-500/10 text-indigo-100",
-  alert: "border-rose-500/30 bg-rose-500/10 text-rose-100",
-  info: "border-sky-500/30 bg-sky-500/10 text-sky-100",
-  warning: "border-amber-500/30 bg-amber-500/10 text-amber-100",
-  system: "border-slate-500/30 bg-slate-500/10 text-slate-100",
+const EVENT_STYLES: Record<SceneEvent["type"], { border: string; bg: string; text: string; dot: string }> = {
+  detection: { border: "rgba(99,102,241,0.25)", bg: "rgba(99,102,241,0.08)", text: "#c7d2fe", dot: "#818cf8" },
+  alert:     { border: "rgba(248,113,113,0.25)", bg: "rgba(248,113,113,0.08)", text: "#fecaca", dot: "#f87171" },
+  info:      { border: "rgba(56,189,248,0.25)", bg: "rgba(56,189,248,0.08)", text: "#bae6fd", dot: "#38bdf8" },
+  warning:   { border: "rgba(251,191,36,0.25)", bg: "rgba(251,191,36,0.08)", text: "#fef08a", dot: "#fbbf24" },
+  system:    { border: "var(--color-border)", bg: "var(--color-bg-secondary)", text: "var(--color-text-secondary)", dot: "#64748b" },
 };
 
 export default function EventTimeline() {
@@ -46,79 +46,79 @@ export default function EventTimeline() {
     return sceneEvents.filter((event) => event.type === filter);
   }, [filter, sceneEvents]);
 
-  const filters: FilterType[] = [
-    "all",
-    "detection",
-    "alert",
-    "warning",
-    "info",
-    "system",
-  ];
+  const filters: FilterType[] = ["all", "detection", "alert", "warning", "info", "system"];
 
   return (
     <section className="app-panel">
       <header className="app-panel-header">
         <div>
           <h2 className="app-panel-title">Event Timeline</h2>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Live scene events from tracking and behavior changes
+          <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+            Live scene events &amp; behavior changes
           </p>
         </div>
         <span className="status-pill status-pill-muted">{filtered.length} events</span>
       </header>
 
-      <div className="border-b border-slate-700/60 px-4 py-2">
+      {/* Filter bar */}
+      <div className="px-4 py-2.5" style={{ borderBottom: "1px solid var(--color-border)" }}>
         <div className="flex flex-wrap gap-1.5">
           {filters.map((item) => (
             <button
               key={item}
               onClick={() => setFilter(item)}
-              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                filter === item
-                  ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-200"
-                  : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600 hover:bg-slate-700"
-              }`}
+              className={filter === item ? "filter-chip filter-chip-active" : "filter-chip"}
             >
-              {item === "all"
-                ? "All"
-                : item.charAt(0).toUpperCase() + item.slice(1)}
+              {item === "all" ? "All" : item.charAt(0).toUpperCase() + item.slice(1)}
             </button>
           ))}
         </div>
       </div>
 
+      {/* Events list */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {filtered.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-slate-500">
-            No events available for this filter.
+          <div className="empty-state" style={{ padding: "2rem" }}>
+            <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+              No events available for this filter.
+            </p>
           </div>
         ) : (
           <ol className="space-y-2">
-            {filtered.map((event) => (
-              <li
-                key={event.id}
-                className={`rounded-xl border px-3 py-2.5 ${EVENT_COLORS[event.type]}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <p className="min-w-0 flex-1 break-words text-sm leading-snug">
-                    {event.message}
-                  </p>
-                  <span className="shrink-0 text-[11px] text-slate-300">
-                    {new Date(event.timestamp).toLocaleTimeString()}
-                  </span>
-                </div>
-                <div className="mt-2 flex items-center gap-2 text-[11px]">
-                  <span className="rounded bg-black/20 px-1.5 py-0.5 uppercase tracking-wide">
-                    {event.type}
-                  </span>
-                  {event.severity && (
-                    <span className="rounded bg-black/20 px-1.5 py-0.5 uppercase tracking-wide">
-                      {event.severity}
+            {filtered.map((event) => {
+              const style = EVENT_STYLES[event.type];
+              return (
+                <li
+                  key={event.id}
+                  className="fade-in rounded-xl px-3.5 py-3"
+                  style={{
+                    background: style.bg,
+                    border: `1px solid ${style.border}`,
+                    color: style.text,
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 flex-1 break-words text-sm leading-snug">
+                      {event.message}
+                    </p>
+                    <span className="shrink-0 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+                      {new Date(event.timestamp).toLocaleTimeString()}
                     </span>
-                  )}
-                </div>
-              </li>
-            ))}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-[11px]">
+                    <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5" style={{ background: "rgba(0,0,0,0.2)" }}>
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: style.dot }} />
+                      {event.type}
+                    </span>
+                    {event.severity && (
+                      <span className="rounded-md px-1.5 py-0.5 uppercase tracking-wide" style={{ background: "rgba(0,0,0,0.2)" }}>
+                        {event.severity}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ol>
         )}
       </div>

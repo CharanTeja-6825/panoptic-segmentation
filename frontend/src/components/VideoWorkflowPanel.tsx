@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getJobStatus,
   getVideoAnalysis,
@@ -15,6 +15,14 @@ interface VideoChatItem {
   content: string;
 }
 
+const STEP_LABELS: Record<JobState, string> = {
+  idle: "Upload a video",
+  uploaded: "Uploaded — starting…",
+  processing: "Processing…",
+  done: "Complete",
+  failed: "Failed",
+};
+
 export default function VideoWorkflowPanel() {
   const [file, setFile] = useState<File | null>(null);
   const [jobId, setJobId] = useState("");
@@ -28,6 +36,8 @@ export default function VideoWorkflowPanel() {
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [chatItems, setChatItems] = useState<VideoChatItem[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const progressPercent = useMemo(() => {
     if (!totalFrames) return 0;
@@ -129,6 +139,13 @@ export default function VideoWorkflowPanel() {
     }
   };
 
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files[0];
+    if (dropped) setFile(dropped);
+  }, []);
+
   const analysisSummary = (analysis?.summary as Record<string, unknown>) ?? null;
   const keyframeCount = Number(analysisSummary?.keyframes_count ?? 0);
   const eventCount = Number(analysisSummary?.events_count ?? 0);
@@ -138,100 +155,147 @@ export default function VideoWorkflowPanel() {
       <header className="app-panel-header">
         <div>
           <h2 className="app-panel-title">Processed Video Studio</h2>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Full-video segmentation, artifact generation, and grounded Q&A
+          <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+            Full-video segmentation, artifacts &amp; grounded Q&amp;A
           </p>
         </div>
-        <span className="status-pill status-pill-muted">{jobState}</span>
+        <span className={`status-pill ${jobState === "done" ? "status-pill-success" : jobState === "failed" ? "status-pill-danger" : "status-pill-muted"}`}>
+          {STEP_LABELS[jobState]}
+        </span>
       </header>
 
-      <div className="grid gap-3 p-4 md:grid-cols-3">
-        <input
-          type="file"
-          accept=".mp4,.avi,.mov,.mkv"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200"
-        />
-        <button
-          onClick={startWorkflow}
-          disabled={!file || busy}
-          className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {/* Upload zone */}
+        <div
+          className="relative mb-4 rounded-xl p-6 text-center transition-all"
+          style={{
+            background: isDragging ? "var(--color-accent-glow)" : "var(--color-bg-secondary)",
+            border: isDragging ? "2px dashed var(--color-accent)" : "2px dashed var(--color-border)",
+            cursor: "pointer",
+          }}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
         >
-          {busy ? "Submitting..." : "Upload & Process"}
-        </button>
-        <a
-          href={jobId && jobState === "done" ? `/api/download/${jobId}` : "#"}
-          className={`rounded-lg px-3 py-2 text-sm font-medium ${
-            jobId && jobState === "done"
-              ? "bg-emerald-600 text-white hover:bg-emerald-500"
-              : "pointer-events-none bg-slate-700 text-slate-400"
-          }`}
-        >
-          Download Output
-        </a>
-      </div>
-
-      <div className="space-y-2 px-4 pb-3">
-        <div className="h-2 overflow-hidden rounded-full bg-slate-800">
-          <div
-            className="h-full bg-indigo-500 transition-all"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-          <span>Progress: {progress} / {totalFrames || "?"} frames</span>
-          <span>FPS: {fps.toFixed(1)}</span>
-          <span>Events: {eventCount}</span>
-          <span>Keyframes: {keyframeCount}</span>
-        </div>
-        {error ? <p className="text-xs text-rose-400">{error}</p> : null}
-      </div>
-
-      <div className="border-t border-slate-700/60 px-4 py-3">
-        <p className="mb-2 text-xs uppercase tracking-wider text-slate-400">
-          Ask about processed video
-        </p>
-        <div className="mb-2 max-h-48 space-y-2 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-2">
-          {chatItems.length === 0 ? (
-            <p className="text-xs text-slate-500">
-              Process a video, then ask questions about activity, counts, or timelines.
-            </p>
-          ) : (
-            chatItems.map((item) => (
-              <div
-                key={item.id}
-                className={`rounded-lg px-3 py-2 text-sm ${
-                  item.role === "user"
-                    ? "bg-indigo-600 text-white"
-                    : "border border-slate-700 bg-slate-800 text-slate-100"
-                }`}
-              >
-                {item.content}
-              </div>
-            ))
-          )}
-        </div>
-        <div className="flex gap-2">
           <input
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void sendQuestion();
-              }
-            }}
-            placeholder="Ask anything about this processed video..."
-            disabled={jobState !== "done" || chatBusy}
-            className="h-10 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100"
+            ref={fileInputRef}
+            type="file"
+            accept=".mp4,.avi,.mov,.mkv"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="hidden"
           />
+          <svg className="mx-auto mb-3 h-8 w-8" style={{ color: "var(--color-text-muted)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+          </svg>
+          <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+            {file ? file.name : "Drop a video or click to upload"}
+          </p>
+          <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
+            MP4, AVI, MOV, MKV · Max 500 MB
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="mb-4 flex gap-3">
           <button
-            onClick={() => void sendQuestion()}
-            disabled={jobState !== "done" || chatBusy || !chatInput.trim()}
-            className="h-10 rounded-lg bg-indigo-600 px-3 text-sm text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={startWorkflow}
+            disabled={!file || busy}
+            className="btn btn-primary flex-1"
           >
-            {chatBusy ? "Asking..." : "Ask"}
+            {busy ? (
+              <>
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Submitting…
+              </>
+            ) : (
+              <>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                </svg>
+                Upload &amp; Process
+              </>
+            )}
           </button>
+          <a
+            href={jobId && jobState === "done" ? `/api/download/${jobId}` : "#"}
+            className={`btn flex-1 ${jobId && jobState === "done" ? "btn-primary" : "btn-ghost pointer-events-none opacity-50"}`}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Download Output
+          </a>
+        </div>
+
+        {/* Progress */}
+        {(jobState === "processing" || jobState === "done") && (
+          <div className="mb-4">
+            <div className="progress-bar">
+              <div className="progress-bar-fill" style={{ width: `${progressPercent}%` }} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-4 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              <span>{progress} / {totalFrames || "?"} frames</span>
+              <span>FPS: {fps.toFixed(1)}</span>
+              <span>Events: {eventCount}</span>
+              <span>Keyframes: {keyframeCount}</span>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-4 rounded-lg px-3 py-2 text-sm" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", color: "#fca5a5" }}>
+            {error}
+          </div>
+        )}
+
+        {/* Q&A Section */}
+        <div className="rounded-xl p-4" style={{ background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)" }}>
+          <p className="mb-3 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+            Ask about processed video
+          </p>
+          <div className="mb-3 max-h-56 space-y-2 overflow-y-auto rounded-lg p-2" style={{ background: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}>
+            {chatItems.length === 0 ? (
+              <p className="py-3 text-center text-xs" style={{ color: "var(--color-text-muted)" }}>
+                Process a video, then ask questions about activity, counts, or timelines.
+              </p>
+            ) : (
+              chatItems.map((item) => (
+                <div
+                  key={item.id}
+                  className={item.role === "user" ? "chat-bubble chat-bubble-user ml-auto" : "chat-bubble chat-bubble-assistant"}
+                  style={{ maxWidth: "90%" }}
+                >
+                  {item.content}
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void sendQuestion();
+                }
+              }}
+              placeholder="Ask anything about this processed video…"
+              disabled={jobState !== "done" || chatBusy}
+              className="input-field h-10 flex-1"
+            />
+            <button
+              onClick={() => void sendQuestion()}
+              disabled={jobState !== "done" || chatBusy || !chatInput.trim()}
+              className="btn btn-primary h-10"
+            >
+              {chatBusy ? "Asking…" : "Ask"}
+            </button>
+          </div>
         </div>
       </div>
     </section>

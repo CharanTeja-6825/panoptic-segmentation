@@ -35,13 +35,13 @@ export default function SystemStatus() {
 
   const services: Array<{ key: keyof typeof systemHealth; label: string }> = [
     { key: "api", label: "API" },
-    { key: "camera", label: "Camera" },
+    { key: "camera", label: "Cam" },
     { key: "llm", label: "LLM" },
-    { key: "websocket", label: "WebSocket" },
+    { key: "websocket", label: "WS" },
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="hidden items-center gap-1.5 sm:flex">
       {services.map((service) => {
         const ok = systemHealth[service.key];
         return (
@@ -50,16 +50,15 @@ export default function SystemStatus() {
             className="status-pill status-pill-muted"
             title={`${service.label}: ${ok ? "Connected" : "Disconnected"}`}
           >
-          <span
-              className={`h-2 w-2 rounded-full ${
+            <span
+              className={`h-1.5 w-1.5 rounded-full transition-colors ${
                 ok
-                ? "bg-emerald-400 shadow-sm shadow-emerald-400/50"
-                : "bg-slate-500"
+                  ? "bg-emerald-400"
+                  : "bg-slate-500"
               }`}
+              style={ok ? { boxShadow: "0 0 6px rgba(52,211,153,0.5)" } : undefined}
             />
-            <span className={ok ? "text-emerald-200" : "text-slate-300"}>
-              {service.label}
-            </span>
+            <span>{service.label}</span>
           </div>
         );
       })}
