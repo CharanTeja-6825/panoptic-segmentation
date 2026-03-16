@@ -1,0 +1,17 @@
+export const queryKeys = {
+  health: ['health'] as const,
+  benchmark: ['benchmark'] as const,
+  cameraStatus: ['camera-status'] as const,
+  cameraList: ['camera-list'] as const,
+  analyticsLive: ['analytics-live'] as const,
+  sceneState: ['scene-state'] as const,
+  sceneEvents: ['scene-events'] as const,
+  sceneSummary: ['scene-summary'] as const,
+  sceneHistory: (classFilter: string, limit: number) => ['scene-history', classFilter, limit] as const,
+  sceneTimeSummary: (minutes: number) => ['scene-time-summary', minutes] as const,
+  sceneCommentary: ['scene-commentary'] as const,
+  llmStatus: ['llm-status'] as const,
+  llmModels: ['llm-models'] as const,
+  jobStatus: (jobId: string) => ['job-status', jobId] as const,
+  videoAnalysis: (jobId: string) => ['video-analysis', jobId] as const,
+} as const;
