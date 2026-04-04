@@ -2,11 +2,12 @@
 Configuration module for the Panoptic Segmentation Web Application.
 
 Reads settings from environment variables with sensible defaults.
+Optimized for low-resource hardware (8GB RAM, i3 CPU).
 """
 
 import os
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
@@ -83,13 +84,44 @@ class AppConfig:
     heatmap_height: int = int(os.environ.get("HEATMAP_HEIGHT", "480"))
     heatmap_decay: float = float(os.environ.get("HEATMAP_DECAY", "0.98"))
 
+    # -------------------------------------------------------------------------
+    # Chat frame throttling (optimized for low-resource hardware)
+    # -------------------------------------------------------------------------
+    chat_frame_interval_ms: int = int(os.environ.get("CHAT_FRAME_INTERVAL_MS", "2000"))
+    chat_max_image_width: int = int(os.environ.get("CHAT_MAX_IMAGE_WIDTH", "512"))
+    chat_jpeg_quality: int = int(os.environ.get("CHAT_JPEG_QUALITY", "60"))
+
+    # -------------------------------------------------------------------------
+    # LLM queue and concurrency settings
+    # -------------------------------------------------------------------------
+    llm_max_queue_size: int = int(os.environ.get("LLM_MAX_QUEUE_SIZE", "2"))
+    llm_max_concurrent: int = int(os.environ.get("LLM_MAX_CONCURRENT", "1"))
+
+    # -------------------------------------------------------------------------
     # Ollama LLM settings
-    ollama_base_url: str = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+    # -------------------------------------------------------------------------
+    ollama_base_url: str = os.environ.get("OLLAMA_BASE_URL", "http://100.91.144.84:11434")
     ollama_model: str = os.environ.get("OLLAMA_MODEL", "llama3.2")
-    ollama_vision_model: str = os.environ.get(
-        "OLLAMA_VISION_MODEL", "llama3.2-vision:latest"
-    )
+    ollama_vision_model: str = os.environ.get("OLLAMA_VISION_MODEL", "llava-phi3")
     ollama_timeout: float = float(os.environ.get("OLLAMA_TIMEOUT", "120"))
+    ollama_read_timeout: float = float(os.environ.get("OLLAMA_READ_TIMEOUT", "45"))
+    ollama_connect_timeout: float = float(os.environ.get("OLLAMA_CONNECT_TIMEOUT", "5"))
+    ollama_max_image_kb: int = int(os.environ.get("OLLAMA_MAX_IMAGE_KB", "350"))
+
+    # -------------------------------------------------------------------------
+    # LLM model configuration (primary and fallback)
+    # -------------------------------------------------------------------------
+    llm_primary_model: str = os.environ.get("LLM_PRIMARY_MODEL", "llava-phi3")
+    llm_fallback_model: str = os.environ.get("LLM_FALLBACK_MODEL", "llava:7b")
+
+    # -------------------------------------------------------------------------
+    # Cloud fallback (feature-flagged, OFF by default)
+    # -------------------------------------------------------------------------
+    llm_enable_cloud_fallback: bool = (
+        os.environ.get("LLM_ENABLE_CLOUD_FALLBACK", "false").lower() == "true"
+    )
+    openai_base_url: Optional[str] = os.environ.get("OPENAI_BASE_URL") or None
+    openai_api_key: Optional[str] = os.environ.get("OPENAI_API_KEY") or None
 
     # Commentary engine
     commentary_enabled: bool = os.environ.get("COMMENTARY_ENABLED", "true").lower() == "true"

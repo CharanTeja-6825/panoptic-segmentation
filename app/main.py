@@ -3,6 +3,8 @@ FastAPI application entry point.
 
 Wires together routes, middleware, CORS, static files and startup / shutdown
 lifecycle events for the Panoptic Segmentation Web Application.
+
+Optimized for low-resource hardware (8GB RAM, i3 CPU).
 """
 
 import logging
@@ -19,13 +21,17 @@ from app.config import config
 from app.inference.model_loader import ModelLoader
 from app.inference.depth_estimator import DepthEstimator
 from app.inference.panoptic_predictor import PanopticPredictor
-from app.llm.ollama_client import OllamaClient
+from app.llm.ollama_client import LLMClient
 from app.memory.scene_memory import SceneMemory
 from app.routes.camera_routes import router as camera_router
 from app.routes.video_routes import router as video_router
 from app.routes.analytics_routes import router as analytics_router
 from app.routes.multicam_routes import router as multicam_router
-from app.routes.chat_routes import router as chat_router, init_chat_routes
+from app.routes.chat_routes import (
+    router as chat_router,
+    init_chat_routes,
+    shutdown_chat_routes,
+)
 from app.routes.scene_routes import router as scene_router, init_scene_routes
 from app.services.commentary_engine import CommentaryEngine
 from app.utils.benchmark import BenchmarkUtil, warmup_model
@@ -49,7 +55,7 @@ _model_loader: ModelLoader | None = None
 _depth_estimator: DepthEstimator | None = None
 _benchmark: BenchmarkUtil | None = None
 _scene_memory: SceneMemory | None = None
-_ollama_client: OllamaClient | None = None
+_llm_client: LLMClient | None = None
 _commentary_engine: CommentaryEngine | None = None
 
 
@@ -57,7 +63,7 @@ _commentary_engine: CommentaryEngine | None = None
 async def lifespan(app: FastAPI):
     """Manage startup and shutdown events."""
     global _model_loader, _depth_estimator, _benchmark
-    global _scene_memory, _ollama_client, _commentary_engine
+    global _scene_memory, _llm_client, _commentary_engine
 
     # ---- startup ----
     logger.info("Starting Real-Time Intelligent Scene Understanding Platform…")
@@ -92,35 +98,44 @@ async def lifespan(app: FastAPI):
     )
     app.state.scene_memory = _scene_memory
 
-    # Ollama LLM client
-    _ollama_client = OllamaClient(
+    # LLM client with enhanced configuration
+    _llm_client = LLMClient(
         base_url=config.ollama_base_url,
         model=config.ollama_model,
-        timeout=config.ollama_timeout,
+        vision_model=config.ollama_vision_model,
+        fallback_model=config.llm_fallback_model,
+        connect_timeout=config.ollama_connect_timeout,
+        read_timeout=config.ollama_read_timeout,
+        max_image_kb=config.ollama_max_image_kb,
     )
-    app.state.ollama_client = _ollama_client
+    app.state.llm_client = _llm_client
 
-    # Check Ollama health (non-blocking, log result)
-    ollama_ok = await _ollama_client.check_health()
-    if ollama_ok:
-        logger.info("Ollama LLM connected at %s", config.ollama_base_url)
+    # Check LLM health (non-blocking, log result)
+    llm_ok = await _llm_client.check_health()
+    if llm_ok:
+        logger.info(
+            "LLM connected at %s (vision: %s, fallback: %s)",
+            config.ollama_base_url,
+            config.ollama_vision_model,
+            config.llm_fallback_model,
+        )
     else:
         logger.warning(
-            "Ollama LLM not available at %s – chat features will be limited",
+            "LLM not available at %s – chat features will be limited",
             config.ollama_base_url,
         )
 
     # Commentary engine
     _commentary_engine = CommentaryEngine(
-        ollama_client=_ollama_client,
+        ollama_client=_llm_client,
         scene_memory=_scene_memory,
         commentary_interval=config.commentary_interval,
     )
     _commentary_engine.enabled = config.commentary_enabled
     app.state.commentary_engine = _commentary_engine
 
-    # Initialise route modules
-    init_chat_routes(_ollama_client, _scene_memory)
+    # Initialise route modules with queue worker
+    init_chat_routes(_llm_client, _scene_memory)
     init_scene_routes(_scene_memory, _commentary_engine)
 
     # Model warmup
@@ -128,19 +143,33 @@ async def lifespan(app: FastAPI):
         predictor = PanopticPredictor(_model_loader)
         warmup_model(predictor, num_frames=config.model_warmup_frames)
 
-    logger.info("Model loaded. Application ready.")
+    logger.info(
+        "Application ready. LLM queue: max_size=%d, max_concurrent=%d",
+        config.llm_max_queue_size,
+        config.llm_max_concurrent,
+    )
     yield
 
     # ---- shutdown ----
     logger.info("Shutting down – releasing resources…")
+
+    # Stop chat queue worker
+    await shutdown_chat_routes()
+
     # Stop multi-camera streams
     from app.routes.multicam_routes import get_camera_manager
     get_camera_manager().stop_all()
+
+    # Close LLM client
+    if _llm_client is not None:
+        await _llm_client.close()
 
     if _depth_estimator is not None:
         _depth_estimator.unload()
     if _model_loader is not None:
         _model_loader.unload()
+
+    logger.info("Shutdown complete.")
 
 
 # ---------------------------------------------------------------------------
@@ -153,9 +182,10 @@ def create_app() -> FastAPI:
         title="Real-Time Intelligent Scene Understanding Platform",
         description=(
             "Real-time panoptic segmentation with object tracking, depth estimation, "
-            "analytics, and multi-camera support. Powered by YOLOv8-seg and FastAPI."
+            "analytics, and multi-camera support. Powered by YOLOv8-seg and FastAPI. "
+            "Optimized for low-resource hardware."
         ),
-        version="2.0.0",
+        version="2.1.0",
         lifespan=lifespan,
     )
 
@@ -209,7 +239,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health", tags=["health"])
     async def health_check():
-        """Return application health status."""
+        """Return application health status with LLM queue metrics."""
         import torch
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -220,9 +250,11 @@ def create_app() -> FastAPI:
         if hasattr(app.state, "depth_estimator") and app.state.depth_estimator is not None:
             depth_status = "enabled" if app.state.depth_estimator.enabled else "disabled"
 
-        ollama_status = "unavailable"
-        if hasattr(app.state, "ollama_client") and app.state.ollama_client is not None:
-            ollama_status = "connected" if app.state.ollama_client.is_available else "disconnected"
+        llm_status = "unavailable"
+        llm_metrics = {}
+        if hasattr(app.state, "llm_client") and app.state.llm_client is not None:
+            llm_status = "connected" if app.state.llm_client.is_available else "disconnected"
+            llm_metrics = app.state.llm_client.get_metrics()
 
         commentary_status = "disabled"
         if hasattr(app.state, "commentary_engine") and app.state.commentary_engine is not None:
@@ -235,8 +267,13 @@ def create_app() -> FastAPI:
             "model_size": config.model_size,
             "depth_estimation": depth_status,
             "tracking": True,
-            "ollama": ollama_status,
-            "ollama_model": config.ollama_model,
+            "llm": {
+                "status": llm_status,
+                "vision_model": config.ollama_vision_model,
+                "fallback_model": config.llm_fallback_model,
+                "queue_max_size": config.llm_max_queue_size,
+                **llm_metrics,
+            },
             "commentary": commentary_status,
             "scene_memory": hasattr(app.state, "scene_memory"),
         }

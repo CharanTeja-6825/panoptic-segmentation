@@ -14,7 +14,9 @@ export const TopNav = () => {
         <p className="text-xs text-slate-400">FastAPI + YOLOv8 + LLM</p>
       </div>
       <div className="flex items-center gap-2">
-        <Badge tone={connected ? 'success' : 'warning'}>{connected ? 'WS connected' : 'WS reconnecting'}</Badge>
+        <Badge variant={connected ? 'success' : 'warning'} dot>
+          {connected ? 'WS connected' : 'WS reconnecting'}
+        </Badge>
         <Button variant="ghost" onClick={toggleTheme} aria-label="Toggle theme">
           Theme: {theme}
         </Button>

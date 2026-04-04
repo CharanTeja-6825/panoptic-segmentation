@@ -1,6 +1,7 @@
 export interface ApiErrorPayload {
   detail?: string;
   error?: string;
+  error_type?: string;
 }
 
 export interface HealthResponse {
@@ -10,8 +11,17 @@ export interface HealthResponse {
   model_size: string;
   depth_estimation: 'enabled' | 'disabled';
   tracking: boolean;
-  ollama: 'connected' | 'disconnected' | 'unavailable';
-  ollama_model: string;
+  llm: {
+    status: 'connected' | 'disconnected' | 'unavailable';
+    vision_model: string;
+    fallback_model: string;
+    queue_max_size: number;
+    total_requests?: number;
+    successful_requests?: number;
+    timeout_count?: number;
+    fallback_count?: number;
+    avg_latency_ms?: number;
+  };
   commentary: 'enabled' | 'disabled';
   scene_memory: boolean;
 }
@@ -276,19 +286,40 @@ export interface ChatRequest {
   message: string;
   model?: string | null;
   temperature?: number;
+  include_frame?: boolean;
 }
 
 export interface ChatResponse {
   reply: string;
   timestamp: number;
   model: string;
+  used_fallback?: boolean;
+  from_memory?: boolean;
+  queue_size?: number;
+  latency_ms?: number;
 }
 
 export interface LlmStatusResponse {
   available: boolean;
   base_url?: string;
   model?: string;
+  vision_model?: string;
+  fallback_model?: string;
   error?: string;
+  queue?: {
+    size: number;
+    max_size: number;
+    total_queued: number;
+    total_processed: number;
+    total_rejected: number;
+  };
+  metrics?: {
+    total_requests: number;
+    successful_requests: number;
+    timeout_count: number;
+    fallback_count: number;
+    avg_latency_ms: number;
+  };
 }
 
 export interface LlmModel {
@@ -298,6 +329,29 @@ export interface LlmModel {
 
 export interface LlmModelsResponse {
   models: LlmModel[];
+}
+
+export interface LlmVisionModelsResponse {
+  models: LlmModel[];
+  default: string;
+  fallback: string;
+}
+
+export interface LlmMetricsResponse {
+  llm: {
+    total_requests: number;
+    successful_requests: number;
+    timeout_count: number;
+    fallback_count: number;
+    avg_latency_ms: number;
+  };
+  queue: {
+    current_size: number;
+    max_size: number;
+    total_queued: number;
+    total_processed: number;
+    total_rejected: number;
+  };
 }
 
 export interface SceneWsObject {
@@ -333,6 +387,8 @@ export interface ChatWsStart {
   type: 'chat_start';
   id: string;
   model: string;
+  from_memory?: boolean;
+  queue_size?: number;
 }
 
 export interface ChatWsToken {
@@ -349,6 +405,8 @@ export interface ChatWsEnd {
 export interface ChatWsError {
   type: 'chat_error';
   error: string;
+  error_type?: string;
+  queue_size?: number;
 }
 
 export type ChatWsMessage = ChatWsStart | ChatWsToken | ChatWsEnd | ChatWsError;

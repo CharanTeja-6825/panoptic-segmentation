@@ -12,6 +12,8 @@ export const queryKeys = {
   sceneCommentary: ['scene-commentary'] as const,
   llmStatus: ['llm-status'] as const,
   llmModels: ['llm-models'] as const,
+  llmVisionModels: ['llm-vision-models'] as const,
+  llmMetrics: ['llm-metrics'] as const,
   jobStatus: (jobId: string) => ['job-status', jobId] as const,
   videoAnalysis: (jobId: string) => ['video-analysis', jobId] as const,
 } as const;

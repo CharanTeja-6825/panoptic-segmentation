@@ -12,8 +12,10 @@ import type {
   ChatResponse,
   HealthResponse,
   JobStatusResponse,
+  LlmMetricsResponse,
   LlmModelsResponse,
   LlmStatusResponse,
+  LlmVisionModelsResponse,
   MultiCameraStartRequest,
   MultiCameraStartResponse,
   MultiCameraStopRequest,
@@ -226,6 +228,26 @@ export const useLlmModels = () =>
     queryKey: queryKeys.llmModels,
     queryFn: () => requestJson<LlmModelsResponse>('/api/llm/models'),
     refetchInterval: 30_000,
+  });
+
+/**
+ * Fetch available vision models for the model selector dropdown.
+ */
+export const useLlmVisionModels = () =>
+  useQuery({
+    queryKey: queryKeys.llmVisionModels,
+    queryFn: () => requestJson<LlmVisionModelsResponse>('/api/llm/vision-models'),
+    refetchInterval: 30_000,
+  });
+
+/**
+ * Fetch LLM performance metrics for observability.
+ */
+export const useLlmMetrics = () =>
+  useQuery({
+    queryKey: queryKeys.llmMetrics,
+    queryFn: () => requestJson<LlmMetricsResponse>('/api/llm/metrics'),
+    refetchInterval: 10_000,
   });
 
 export const useDownloadUrl = (jobId: string | null): string | null =>

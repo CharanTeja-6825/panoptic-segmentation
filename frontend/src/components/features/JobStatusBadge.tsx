@@ -7,13 +7,13 @@ interface JobStatusBadgeProps {
 
 export const JobStatusBadge = ({ status }: JobStatusBadgeProps) => {
   if (status === 'done') {
-    return <Badge tone="success">done</Badge>;
+    return <Badge variant="success">done</Badge>;
   }
   if (status === 'failed') {
-    return <Badge tone="danger">failed</Badge>;
+    return <Badge variant="destructive">failed</Badge>;
   }
   if (status === 'processing') {
-    return <Badge tone="warning">processing</Badge>;
+    return <Badge variant="warning">processing</Badge>;
   }
-  return <Badge>uploaded</Badge>;
+  return <Badge variant="secondary">uploaded</Badge>;
 };

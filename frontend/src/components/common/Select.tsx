@@ -2,14 +2,43 @@ import type { SelectHTMLAttributes } from 'react';
 
 import { cn } from '@/utils/classNames';
 
-export const Select = ({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) => (
-  <select
-    className={cn(
-      'w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
-      className,
+interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  label?: string;
+  error?: string;
+}
+
+export const Select = ({ className, children, label, error, id, ...props }: SelectProps) => (
+  <div className="flex flex-col gap-1.5">
+    {label && (
+      <label htmlFor={id} className="text-sm font-medium text-slate-300">
+        {label}
+      </label>
     )}
-    {...props}
-  >
+    <select
+      id={id}
+      className={cn(
+        'flex h-10 w-full items-center justify-between rounded-md border bg-slate-900 px-3 py-2 text-sm',
+        'border-slate-700 text-slate-100 placeholder:text-slate-500',
+        'focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 focus:ring-offset-slate-900',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        error && 'border-rose-500 focus:ring-rose-400',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </select>
+    {error && <p className="text-xs text-rose-400">{error}</p>}
+  </div>
+);
+
+// Option component for consistent styling
+interface SelectOptionProps extends React.OptionHTMLAttributes<HTMLOptionElement> {
+  children: React.ReactNode;
+}
+
+export const SelectOption = ({ children, ...props }: SelectOptionProps) => (
+  <option className="bg-slate-900 text-slate-100" {...props}>
     {children}
-  </select>
+  </option>
 );
